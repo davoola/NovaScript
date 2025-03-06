@@ -1,1 +1,20 @@
- 
+  # .dockerignore
+# 忽略所有以 .git 开头的文件/目录
+.git
+.gitignore
+
+# 忽略 node_modules 和 npm 调试日志
+node_modules
+npm-debug.log
+
+# 忽略本地测试文件、临时文件
+tmp/
+*.tmp
+
+# 忽略 IDE 配置文件
+.idea/
+.vscode/
+
+# 上传目录
+
+public/uploads/*
