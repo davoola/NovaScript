@@ -886,6 +886,19 @@ function copyTextToClipboard(text, callback) {
   return success;
 }
 
+// 添加防抖函数
+function debounce(func, wait) {
+  let timeout;
+  return function(...args) {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => func.apply(this, args), wait);
+  };
+}
+
+// 添加滚动状态变量
+let lastScrollTop = 0;
+let scrollDirection = 'none';
+
 // 简化滚动到底部的函数
 function scrollToBottom() {
   const messageContainer = document.querySelector('.messages');
@@ -893,17 +906,38 @@ function scrollToBottom() {
 
   const isMobile = window.innerWidth <= 768;
   
+  // 如果当前正在向上滚动，不要打断用户的滚动
+  if (scrollDirection === 'up') return;
+  
   if (isMobile) {
-    // 移动端使用即时滚动
     messageContainer.scrollTop = messageContainer.scrollHeight;
   } else {
-    // PC端使用平滑滚动
     messageContainer.scrollTo({
       top: messageContainer.scrollHeight,
       behavior: 'smooth'
     });
   }
 }
+
+// 修改消息容器的滚动监听
+messageContainer.addEventListener('scroll', debounce(() => {
+  const currentScrollTop = messageContainer.scrollTop;
+  const isMobile = window.innerWidth <= 768;
+  
+  // 判断滚动方向
+  scrollDirection = currentScrollTop > lastScrollTop ? 'down' : 'up';
+  lastScrollTop = currentScrollTop;
+
+  // 只在以下情况触发自动滚动：
+  // 1. 是向下滚动
+  // 2. 距离底部足够近（移动端 20px，PC端 100px）
+  const triggerDistance = isMobile ? 20 : 100;
+  const isNearBottom = messageContainer.scrollHeight - currentScrollTop - messageContainer.clientHeight < triggerDistance;
+  
+  if (scrollDirection === 'down' && isNearBottom) {
+    scrollToBottom();
+  }
+}, 150));
 
 // 添加页面加载完成后的滚动处理
 document.addEventListener('DOMContentLoaded', () => {
@@ -1172,22 +1206,6 @@ document.querySelectorAll('.emoji-item').forEach(item => {
         // 关闭模态框
         emojiModal.style.display = 'none';
     });
-});
-
-// 添加消息容器的滚动监听
-messageContainer.addEventListener('scroll', () => {
-  // 检查是否是移动设备
-  const isMobile = window.innerWidth <= 768;
-  
-  // 移动端使用更小的触发距离
-  const triggerDistance = isMobile ? 30 : 100;
-  
-  const isNearBottom = messageContainer.scrollHeight - messageContainer.scrollTop - messageContainer.clientHeight < triggerDistance;
-  
-  // 在移动端，只在用户明确滚动到非常接近底部时才触发
-  if (isNearBottom && (!isMobile || messageContainer.scrollTop > 0)) {
-    scrollToBottom();
-  }
 });
 
 // 初始化markdown-it

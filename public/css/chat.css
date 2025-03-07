@@ -308,6 +308,8 @@ body {
   overflow-y: auto;
   background-color: var(--bg-primary);
   scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch; /* 增加 iOS 滚动惯性 */
+  overscroll-behavior: contain; /* 防止滚动链接 */
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -668,8 +670,9 @@ body {
   
   .messages {
     padding: 15px;
-    padding-bottom: 10px; /* 减小底部内边距，让消息更靠近输入框 */
+    padding-bottom: 10px;
     scroll-behavior: auto; /* 移动端使用即时滚动 */
+    overscroll-behavior-y: contain; /* 确保在移动端也生效 */
   }
 
   .toolbar {
