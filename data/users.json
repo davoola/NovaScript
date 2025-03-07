@@ -2,19 +2,20 @@
   "users": [
     {
       "id": "01",
-      "username": "Davis",
-      "nickname": "戴维",
+      "username": "Script",
+      "nickname": "墨韵",
       "password": "123456",
-      "avatarUrl": "/images/avatars/man.png",
+      "avatarUrl": "/images/avatars/default.png",
       "role": "admin",
-      "createdAt": "2025-02-01T00:00:00.000Z",
-      "lastLoginAt": "2025-03-07T11:19:27.841Z",
-      "status": "online",
+      "createdAt": "2025-01-01T00:00:00.000Z",
+      "lastLoginAt": "2025-01-01T00:00:00.000Z",
+      "status": "offline",
       "friends": [
         "02",
-        "03"
+        "03",
+		    "04"
       ],
-      "lastStatusChange": "2025-03-07T13:17:02.361Z"
+      "lastStatusChange": "2025-01-01T00:00:00.000Z"
     },
     {
       "id": "02",
@@ -58,6 +59,7 @@
       "lastLoginAt": "2025-03-06T10:29:01.360Z",
       "status": "offline",
       "friends": [
+        "01",
         "02"
       ],
       "lastStatusChange": "2025-03-06T10:41:23.439Z"
