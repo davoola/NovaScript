@@ -44,7 +44,7 @@
 
 1. 克隆仓库：
 ```bash
-git clone [repository-url]
+git clone https://github.com/davoola/NovaScript.git
 cd NovaScript
 ```
 
@@ -80,7 +80,7 @@ npm start
 1. 使用 Docker Compose 部署（推荐）：
 ```bash
 # 克隆仓库
-git clone [repository-url]
+git clone https://github.com/davoola/NovaScript.git
 cd NovaScript
 
 # 创建必要的目录
@@ -99,7 +99,7 @@ docker-compose up -d
 2. 使用 Docker 直接部署：
 ```bash
 # 克隆仓库
-git clone [repository-url]
+git clone https://github.com/davoola/NovaScript.git
 cd NovaScript
 
 # 创建必要的目录
@@ -292,7 +292,7 @@ MIT License
 1. 使用 Docker Compose 部署（推荐）：
 ```bash
 # 克隆仓库
-git clone [repository-url]
+git clone https://github.com/davoola/NovaScript.git
 cd NovaScript
 
 # 创建必要的目录
@@ -311,7 +311,7 @@ docker-compose up -d
 2. 使用 Docker 直接部署：
 ```bash
 # 克隆仓库
-git clone [repository-url]
+git clone https://github.com/davoola/NovaScript.git
 cd NovaScript
 
 # 创建必要的目录
