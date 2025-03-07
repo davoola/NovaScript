@@ -1,7 +1,7 @@
 {
   "name": "NovaScript",
   "version": "1.0.0",
-  "description": "A modern real-time chat application with Markdown support",
+  "description": "一个现代化的实时一对一聊天应用，支持 Markdown 格式和丰富的消息功能。",
   "main": "server.js",
   "type": "module",
   "scripts": {

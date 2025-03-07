@@ -891,8 +891,18 @@ function scrollToBottom() {
   const messageContainer = document.querySelector('.messages');
   if (!messageContainer) return;
 
-  // 直接设置滚动位置到最底部
-  messageContainer.scrollTop = messageContainer.scrollHeight;
+  const isMobile = window.innerWidth <= 768;
+  
+  if (isMobile) {
+    // 移动端使用即时滚动
+    messageContainer.scrollTop = messageContainer.scrollHeight;
+  } else {
+    // PC端使用平滑滚动
+    messageContainer.scrollTo({
+      top: messageContainer.scrollHeight,
+      behavior: 'smooth'
+    });
+  }
 }
 
 // 添加页面加载完成后的滚动处理
@@ -1166,8 +1176,16 @@ document.querySelectorAll('.emoji-item').forEach(item => {
 
 // 添加消息容器的滚动监听
 messageContainer.addEventListener('scroll', () => {
-  const isNearBottom = messageContainer.scrollHeight - messageContainer.scrollTop - messageContainer.clientHeight < 100;
-  if (isNearBottom) {
+  // 检查是否是移动设备
+  const isMobile = window.innerWidth <= 768;
+  
+  // 移动端使用更小的触发距离
+  const triggerDistance = isMobile ? 30 : 100;
+  
+  const isNearBottom = messageContainer.scrollHeight - messageContainer.scrollTop - messageContainer.clientHeight < triggerDistance;
+  
+  // 在移动端，只在用户明确滚动到非常接近底部时才触发
+  if (isNearBottom && (!isMobile || messageContainer.scrollTop > 0)) {
     scrollToBottom();
   }
 });

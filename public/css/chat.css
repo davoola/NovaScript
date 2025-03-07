@@ -668,6 +668,8 @@ body {
   
   .messages {
     padding: 15px;
+    padding-bottom: 10px; /* 减小底部内边距，让消息更靠近输入框 */
+    scroll-behavior: auto; /* 移动端使用即时滚动 */
   }
 
   .toolbar {
@@ -699,7 +701,7 @@ body {
 
 @media (max-width: 480px) {
   .messages {
-    padding-bottom: 220px; /* 小屏幕设备的底部内边距 */
+    padding-bottom: 5px; /* 保持与其他屏幕尺寸一致的底部内边距 */
   }
 
   .message-image,
@@ -871,7 +873,7 @@ body {
 
   .messages {
     padding: 20px 1%;
-    padding-bottom: 160px; /* 移动端增加更多底部内边距 */
+    padding-bottom: 10px; /* 减小底部内边距 */
   }
   
   .message {

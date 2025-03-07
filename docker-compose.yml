@@ -1,14 +1,14 @@
-version: '3.9'
+version: '3.8'
 
 services:
-  NovaScript:
+  novascript:
     build: .
     ports:
       - "3000:3000"
     environment:
       - NODE_ENV=production
     volumes:
-      - ./data/user.json:/app/data/user.json
+      - ./data/users.json:/app/data/users.json
       - ./data/chats:/app/data/chats
       - ./public/uploads:/app/public/uploads
     restart: unless-stopped

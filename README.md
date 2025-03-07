@@ -1,6 +1,6 @@
 # NovaScript
 
-> 一个现代化的实时一对一聊天应用，支持 Markdown 格式和丰富的消息功能。
+一个现代化的实时一对一聊天应用，支持 Markdown 格式和丰富的消息功能。
 
 ## 功能特点
 
@@ -44,7 +44,7 @@
 
 1. 克隆仓库：
 ```bash
-git clone https://github.com/davoola/NovaScript.git
+git clone [repository-url]
 cd NovaScript
 ```
 
@@ -59,7 +59,7 @@ npm install
 mkdir -p data/chats public/uploads
 
 # 从示例文件创建用户配置
-cp data/user.json.example data/user.json
+cp data/users.json.example data/users.json
 ```
 
 4. 创建环境变量文件（可选）：
@@ -80,14 +80,14 @@ npm start
 1. 使用 Docker Compose 部署（推荐）：
 ```bash
 # 克隆仓库
-git clone https://github.com/davoola/NovaScript.git
+git clone [repository-url]
 cd NovaScript
 
 # 创建必要的目录
 mkdir -p data/chats public/uploads
 
 # 初始化用户配置
-cp data/user.json.example data/user.json
+cp data/users.json.example data/users.json
 
 # 创建并编辑环境变量文件（可选）
 cp .env.example .env
@@ -99,14 +99,14 @@ docker-compose up -d
 2. 使用 Docker 直接部署：
 ```bash
 # 克隆仓库
-git clone https://github.com/davoola/NovaScript.git
+git clone [repository-url]
 cd NovaScript
 
 # 创建必要的目录
 mkdir -p data/chats public/uploads
 
 # 初始化用户配置
-cp data/user.json.example data/user.json
+cp data/users.json.example data/users.json
 
 # 构建镜像
 docker build -t novascript .
@@ -114,7 +114,7 @@ docker build -t novascript .
 # 运行容器
 docker run -d \
   -p 3000:3000 \
-  -v $(pwd)/data/user.json:/app/data/user.json \
+  -v $(pwd)/data/users.json:/app/data/users.json \
   -v $(pwd)/data/chats:/app/data/chats \
   -v $(pwd)/public/uploads:/app/public/uploads \
   --name novascript \
@@ -126,7 +126,7 @@ docker run -d \
 ### Docker 部署注意事项
 
 1. 数据持久化：
-   - 用户配置存储在 `data/user.json` 中
+   - 用户配置存储在 `data/users.json` 中
    - 聊天记录存储在 `data/chats` 目录中
    - 上传的文件存储在 `public/uploads` 目录中
    - Docker 部署时会自动挂载这些目录
@@ -292,14 +292,14 @@ MIT License
 1. 使用 Docker Compose 部署（推荐）：
 ```bash
 # 克隆仓库
-git clone https://github.com/davoola/NovaScript.git
+git clone [repository-url]
 cd NovaScript
 
 # 创建必要的目录
 mkdir -p data/chats public/uploads
 
 # 初始化用户配置
-cp data/user.json.example data/user.json
+cp data/users.json.example data/users.json
 
 # 创建并编辑环境变量文件（可选）
 cp .env.example .env
@@ -311,14 +311,14 @@ docker-compose up -d
 2. 使用 Docker 直接部署：
 ```bash
 # 克隆仓库
-git clone https://github.com/davoola/NovaScript.git
+git clone [repository-url]
 cd NovaScript
 
 # 创建必要的目录
 mkdir -p data/chats public/uploads
 
 # 初始化用户配置
-cp data/user.json.example data/user.json
+cp data/users.json.example data/users.json
 
 # 构建镜像
 docker build -t novascript .
@@ -326,7 +326,7 @@ docker build -t novascript .
 # 运行容器
 docker run -d \
   -p 3000:3000 \
-  -v $(pwd)/data/user.json:/app/data/user.json \
+  -v $(pwd)/data/users.json:/app/data/users.json \
   -v $(pwd)/data/chats:/app/data/chats \
   -v $(pwd)/public/uploads:/app/public/uploads \
   --name novascript \
@@ -338,7 +338,7 @@ docker run -d \
 ### Docker 部署注意事项
 
 1. 数据持久化：
-   - 用户配置存储在 `data/user.json` 中
+   - 用户配置存储在 `data/users.json` 中
    - 聊天记录存储在 `data/chats` 目录中
    - 上传的文件存储在 `public/uploads` 目录中
    - Docker 部署时会自动挂载这些目录
