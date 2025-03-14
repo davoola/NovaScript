@@ -8,61 +8,61 @@
       "avatarUrl": "/images/avatars/default.png",
       "role": "admin",
       "createdAt": "2025-01-01T00:00:00.000Z",
-      "lastLoginAt": "2025-01-01T00:00:00.000Z",
-      "status": "offline",
+      "lastLoginAt": "2025-03-15T00:00:00.000Z",
+      "status": "online",
       "friends": [
         "02",
         "03",
-		    "04"
+        "04"
       ],
-      "lastStatusChange": "2025-01-01T00:00:00.000Z"
+      "lastStatusChange": "2025-03-15T00:00:00.000Z"
     },
     {
       "id": "02",
       "username": "Nova",
       "nickname": "诺娜",
       "password": "123456",
-      "avatarUrl": "/images/avatars/woman.png",
+      "avatarUrl": "/images/avatars/female.png",
       "role": "user",
-      "createdAt": "2025-02-01T00:00:00.000Z",
-      "lastLoginAt": "2025-03-07T11:18:34.607Z",
-      "status": "offline",
+      "createdAt": "2025-01-01T00:00:00.000Z",
+      "lastLoginAt": "2025-03-15T00:00:00.000Z",
+      "status": "online",
       "friends": [
         "01",
         "04"
       ],
-      "lastStatusChange": "2025-03-07T13:18:28.898Z"
+      "lastStatusChange": "2025-03-15T00:00:00.000Z"
     },
     {
       "id": "03",
       "username": "Jack",
       "nickname": "杰克",
       "password": "123456",
-      "avatarUrl": "/images/avatars/default.png",
+      "avatarUrl": "/images/avatars/boy.png",
       "role": "user",
       "createdAt": "2025-01-01T00:00:00.000Z",
-      "lastLoginAt": "2025-03-06T02:07:09.776Z",
+      "lastLoginAt": "2025-03-15T00:00:00.000Z",
       "status": "offline",
       "friends": [
         "01"
       ],
-      "lastStatusChange": "2025-03-06T10:27:52.801Z"
+      "lastStatusChange": "2025-03-15T00:00:00.000Z"
     },
     {
       "id": "04",
       "username": "Amy",
       "nickname": "艾米",
       "password": "123456",
-      "avatarUrl": "/images/avatars/female.png",
+      "avatarUrl": "/images/avatars/girl.png",
       "role": "user",
       "createdAt": "2025-01-01T00:00:00.000Z",
-      "lastLoginAt": "2025-03-06T10:29:01.360Z",
+      "lastLoginAt": "2025-03-15T00:00:00.000Z",
       "status": "offline",
       "friends": [
         "01",
         "02"
       ],
-      "lastStatusChange": "2025-03-06T10:41:23.439Z"
+      "lastStatusChange": "2025-03-15T00:00:00.000Z"
     }
   ]
 }

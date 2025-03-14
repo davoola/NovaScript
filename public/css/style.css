@@ -454,3 +454,47 @@ body {
         font-size: 14px;
     }
 }
+
+/* 加载更多消息按钮样式 */
+.load-more-container {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    padding: 10px 0;
+    margin-bottom: 10px;
+}
+
+.load-more-btn {
+    background-color: var(--bg-secondary);
+    color: var(--primary-color);
+    border: 1px solid var(--border-color);
+    border-radius: 20px;
+    padding: 8px 15px;
+    font-size: 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    transition: all 0.2s ease;
+}
+
+.load-more-btn:hover {
+    background-color: var(--primary-color);
+    color: white;
+}
+
+.load-more-btn i {
+    font-size: 12px;
+}
+
+[data-theme="dark"] .load-more-btn {
+    background-color: #2a2a2a;
+    color: #64b5f6;
+    border-color: #444;
+}
+
+[data-theme="dark"] .load-more-btn:hover {
+    background-color: #64b5f6;
+    color: #1a1a1a;
+}

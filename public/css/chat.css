@@ -394,7 +394,7 @@ body {
 }
 
 .message-bubble {
-  max-width: 70%;
+  max-width: 85%;
   padding: 12px 16px;
   border-radius: 16px;
   position: relative;
@@ -902,7 +902,7 @@ body {
   }
 
   .message-bubble {
-    max-width: 85%;
+    max-width: 98%;
     min-width: 60px;
   }
   
@@ -1540,4 +1540,64 @@ body {
         height: 35px;
         font-size: 20px;
     }
+} 
+
+/* 加载更多消息按钮样式 */
+.load-more-container {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  padding: 8px 0;
+  margin-bottom: 10px;
+}
+
+.load-more-btn {
+  background-color: #f2f2f2;
+  color: #666;
+  border: none;
+  border-radius: 12px;
+  padding: 6px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  transition: all 0.2s ease;
+}
+
+.load-more-btn:hover {
+  background-color: #e6e6e6;
+  color: #333;
+}
+
+.load-more-btn i {
+  font-size: 12px;
+}
+
+/* 暗色主题下的加载更多按钮 */
+[data-theme="dark"] .load-more-btn {
+  background-color: #333333;
+  color: #aaaaaa;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="dark"] .load-more-btn:hover {
+  background-color: #444444;
+  color: #dddddd;
+}
+
+/* 移动端适配 */
+@media (max-width: 768px) {
+  .load-more-btn {
+    font-size: 12px;
+    padding: 5px 10px;
+  }
+}
+
+/* 小屏幕适配 */
+@media (max-width: 480px) {
+  .load-more-container {
+    padding: 5px 0;
+  }
 } 

@@ -5,6 +5,11 @@ let md = null;
 // 标记Mermaid是否已初始化
 let mermaidInitialized = false;
 
+// 添加分页加载所需的变量
+let isLoadingMore = false;
+let hasMoreMessages = true;
+let firstLoadedMessageId = null;
+
 // 移动端菜单处理
 function initializeMobileMenu() {
   // console.log('Initializing mobile menu...');
@@ -173,35 +178,94 @@ function initializeSocket() {
     }
   });
 
-  socket.on('chat history', (messages) => {
-    if (!Array.isArray(messages)) return;
+  socket.on('chat history', (data) => {
+    if (!data || !Array.isArray(data.messages)) return;
     
     messageContainer.innerHTML = '';
     
-    // 渲染所有消息
-    messages.forEach(message => {
+    // 记录第一条消息的ID，用于加载更多
+    if (data.messages.length > 0) {
+      // 第一条消息是最早的消息（用于加载更多历史记录）
+      firstLoadedMessageId = data.messages[0].id;
+      hasMoreMessages = data.hasMore;
+      
+      // 添加"加载更多"按钮 (如果有更多消息)
+      if (hasMoreMessages) {
+        addLoadMoreButton();
+      }
+    }
+    
+    // 渲染所有消息 - 消息已按时间排序，旧消息在前，新消息在后
+    data.messages.forEach(message => {
       renderMessage(message, false);
     });
 
     // 等待所有媒体内容加载完成后滚动
-    const mediaElements = messageContainer.querySelectorAll('img, video, audio');
-    Promise.all(
-      Array.from(mediaElements).map(media => {
-        return new Promise((resolve) => {
-          if (media.complete || media.readyState >= 2) {
-            resolve();
-          } else {
-            media.addEventListener('load', resolve);
-            media.addEventListener('loadedmetadata', resolve);
-            media.addEventListener('error', resolve);
-          }
-        });
-      })
-    ).then(() => {
+    waitForMediaLoad().then(() => {
       // 确保在所有内容加载完成后滚动到底部
       setTimeout(() => {
         scrollToBottom();
       }, 100);
+    });
+  });
+
+  // 处理加载更多消息的响应
+  socket.on('more chat history', (messages) => {
+    isLoadingMore = false;
+    
+    const loadMoreBtn = document.getElementById('load-more-btn');
+    if (loadMoreBtn) {
+      loadMoreBtn.innerHTML = '查看更多消息';
+    }
+    
+    if (!Array.isArray(messages) || messages.length === 0) {
+      hasMoreMessages = false;
+      if (loadMoreBtn) {
+        loadMoreBtn.parentNode.remove();
+      }
+      return;
+    }
+    
+    // 记录当前滚动位置和第一个元素
+    const firstVisibleElement = messageContainer.firstElementChild;
+    const currentPosition = firstVisibleElement.getBoundingClientRect().top;
+    
+    // 更新第一条消息ID（最早的消息ID，用于下次加载更多）
+    firstLoadedMessageId = messages[0].id;
+    
+    // 移除旧的加载按钮
+    if (loadMoreBtn) {
+      loadMoreBtn.parentNode.remove();
+    }
+    
+    // 先按时间戳排序(旧→新)，确保正确的时间顺序
+    messages.sort((a, b) => {
+      const timeA = new Date(a.timestamp).getTime();
+      const timeB = new Date(b.timestamp).getTime();
+      return timeA - timeB; // 旧消息在前，新消息在后
+    });
+
+    // 从最早的消息开始，依次添加到容器顶部
+    // 这样最新的消息会最接近原有内容
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const messageElement = renderMessage(messages[i], false);
+      messageContainer.insertBefore(messageElement, messageContainer.firstChild);
+    }
+    
+    // 如果还有更多历史消息，添加新的加载按钮
+    if (messages.length >= 30) {
+      addLoadMoreButton();
+    } else {
+      hasMoreMessages = false;
+    }
+    
+    // 恢复滚动位置，保持用户查看的位置不变
+    waitForMediaLoad().then(() => {
+      if (firstVisibleElement) {
+        const newPosition = firstVisibleElement.getBoundingClientRect().top;
+        const scrollAdjustment = newPosition - currentPosition;
+        window.scrollBy(0, scrollAdjustment);
+      }
     });
   });
 
@@ -343,6 +407,7 @@ function renderMessage(message, shouldScroll = true) {
   const isOwn = message.sender === currentUser.id;
   const messageElement = document.createElement('div');
   messageElement.className = `message ${isOwn ? 'own' : 'other'}`;
+  messageElement.setAttribute('data-message-id', message.id);
   
   let content = '';
   let isMediaContent = false;
@@ -490,6 +555,8 @@ function renderMessage(message, shouldScroll = true) {
       // console.log('消息包含数学公式，已渲染');
     }
   }
+
+  return messageElement;
 }
 
 // 添加一个备用的Mermaid渲染方法
@@ -1737,3 +1804,56 @@ function initializeLightbox() {
 document.addEventListener('DOMContentLoaded', () => {
   initializeLightbox();
 });
+
+// 添加"加载更多"按钮
+function addLoadMoreButton() {
+  // 如果已有加载按钮，不重复添加
+  if (document.getElementById('load-more-btn')) return;
+  
+  const loadMoreDiv = document.createElement('div');
+  loadMoreDiv.className = 'load-more-container';
+  loadMoreDiv.innerHTML = `
+    <button id="load-more-btn" class="load-more-btn">
+      查看更多消息
+    </button>
+  `;
+  
+  messageContainer.insertBefore(loadMoreDiv, messageContainer.firstChild);
+  
+  // 添加点击事件
+  document.getElementById('load-more-btn').addEventListener('click', loadMoreMessages);
+}
+
+// 加载更多消息
+function loadMoreMessages() {
+  if (isLoadingMore || !hasMoreMessages || !firstLoadedMessageId || !currentChat) return;
+  
+  const loadMoreBtn = document.getElementById('load-more-btn');
+  loadMoreBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 加载中...';
+  isLoadingMore = true;
+  
+  // 发送加载更多请求
+  socket.emit('load more messages', {
+    targetUserId: currentChat.id,
+    beforeMessageId: firstLoadedMessageId,
+    limit: 30
+  });
+}
+
+// 辅助函数：等待媒体加载
+function waitForMediaLoad() {
+  const mediaElements = messageContainer.querySelectorAll('img, video, audio');
+  return Promise.all(
+    Array.from(mediaElements).map(media => {
+      return new Promise((resolve) => {
+        if (media.complete || media.readyState >= 2) {
+          resolve();
+        } else {
+          media.addEventListener('load', resolve);
+          media.addEventListener('loadedmetadata', resolve);
+          media.addEventListener('error', resolve);
+        }
+      });
+    })
+  );
+}

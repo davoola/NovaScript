@@ -11,6 +11,7 @@ import { marked } from 'marked';
 import path from 'path';
 import { markedEmoji } from 'marked-emoji';
 import emojiToolkit from 'emoji-toolkit';
+import NodeCache from 'node-cache';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -155,6 +156,171 @@ marked.setOptions({
 const CHAT_LOGS_DIR = 'data/chats';
 await fs.mkdir(CHAT_LOGS_DIR, { recursive: true });
 
+// ChatCache类 - 用于缓存聊天记录
+class ChatCache {
+  constructor(maxSize = 100, stdTTL = 3600) {
+    this.cache = new NodeCache({
+      stdTTL, // 默认过期时间：1小时
+      checkperiod: 600, // 每10分钟检查过期的key
+      useClones: false // 避免深度复制，提高性能
+    });
+    this.maxSize = maxSize;
+    this.keysByAccess = []; // 用于实现LRU
+    this.dirtyKeys = new Set(); // 用于标记需要同步到磁盘的缓存
+    
+    // 设置定时同步
+    this.syncInterval = setInterval(() => this.syncToDisk(), 5 * 60 * 1000); // 每5分钟
+  }
+  
+  // 获取聊天记录
+  async get(chatId, shardId) {
+    const key = `${chatId}_${shardId}`;
+    let data = this.cache.get(key);
+    
+    if (data) {
+      // 更新访问记录
+      this.updateKeyAccess(key);
+      return data;
+    }
+    
+    // 缓存未命中，从文件加载
+    try {
+      const shardFile = path.join(CHAT_LOGS_DIR, `${chatId}_${shardId}.json`);
+      data = await fs.readFile(shardFile, 'utf8')
+        .then(content => JSON.parse(content))
+        .catch(() => ({ messages: [] }));
+      
+      // 添加到缓存
+      this.set(chatId, shardId, data);
+      return data;
+    } catch (error) {
+      console.error(`Error loading shard ${chatId}_${shardId} from disk:`, error);
+      return { messages: [] };
+    }
+  }
+  
+  // 设置缓存
+  set(chatId, shardId, data) {
+    const key = `${chatId}_${shardId}`;
+    
+    // 如果缓存已满，删除最久未访问的项
+    if (this.cache.keys().length >= this.maxSize && !this.cache.has(key)) {
+      this.evictLRU();
+    }
+    
+    // 添加到缓存
+    this.cache.set(key, data);
+    this.updateKeyAccess(key);
+    this.markDirty(key);
+  }
+  
+  // 添加消息到缓存中的分片
+  async addMessage(chatId, shardId, message) {
+    const key = `${chatId}_${shardId}`;
+    let data = this.cache.get(key);
+    
+    if (!data) {
+      // 如果分片不在缓存中，先加载它
+      data = await this.get(chatId, shardId);
+    }
+    
+    // 检查消息是否已存在
+    const messageExists = data.messages.some(m => m.id === message.id);
+    if (!messageExists) {
+      // 添加消息
+      data.messages.push(message);
+      
+      // 按时间戳排序
+      data.messages.sort((a, b) => {
+        const timeA = new Date(a.timestamp).getTime();
+        const timeB = new Date(b.timestamp).getTime();
+        return timeA - timeB;
+      });
+      
+      // 更新缓存并标记为脏数据
+      this.cache.set(key, data);
+      this.updateKeyAccess(key);
+      this.markDirty(key);
+    }
+  }
+  
+  // 标记为脏数据
+  markDirty(key) {
+    this.dirtyKeys.add(key);
+  }
+  
+  // 更新访问记录
+  updateKeyAccess(key) {
+    const index = this.keysByAccess.indexOf(key);
+    if (index > -1) {
+      this.keysByAccess.splice(index, 1);
+    }
+    this.keysByAccess.push(key);
+  }
+  
+  // 驱逐最久未访问的缓存项
+  evictLRU() {
+    if (this.keysByAccess.length > 0) {
+      const oldestKey = this.keysByAccess.shift();
+      
+      // 如果是脏数据，先同步到磁盘
+      if (this.dirtyKeys.has(oldestKey)) {
+        this.syncKeyToDisk(oldestKey)
+          .catch(err => console.error(`Error syncing evicted key ${oldestKey} to disk:`, err));
+      }
+      
+      this.cache.del(oldestKey);
+    }
+  }
+  
+  // 同步所有脏数据到磁盘
+  async syncToDisk() {
+    const promises = [];
+    for (const key of this.dirtyKeys) {
+      promises.push(this.syncKeyToDisk(key));
+    }
+    
+    // 清空脏数据标记
+    this.dirtyKeys.clear();
+    
+    return Promise.all(promises);
+  }
+  
+  // 同步单个键到磁盘
+  async syncKeyToDisk(key) {
+    const data = this.cache.get(key);
+    if (!data) return;
+    
+    const [chatId, shardId] = key.split('_');
+    const shardFile = path.join(CHAT_LOGS_DIR, `${chatId}_${shardId}.json`);
+    
+    try {
+      // 写入分片文件
+      await fs.writeFile(shardFile, JSON.stringify(data, null, 2));
+      this.dirtyKeys.delete(key);
+    } catch (error) {
+      console.error(`Error syncing key ${key} to disk:`, error);
+      // 保留脏标记，下次继续尝试
+    }
+  }
+  
+  // 清理资源
+  close() {
+    clearInterval(this.syncInterval);
+    return this.syncToDisk(); // 同步所有脏数据
+  }
+}
+
+// 初始化缓存系统
+const chatCache = new ChatCache(50); // 最多缓存50个分片
+
+// 在应用退出时同步缓存
+process.on('SIGINT', async () => {
+  console.log('Syncing chat cache to disk before exit...');
+  await chatCache.syncToDisk();
+  process.exit(0);
+});
+
 async function initializeDataDirectory() {
   try {
     await fs.mkdir('data', { recursive: true });
@@ -245,15 +411,31 @@ io.on('connection', (socket) => {
     const chatId = getChatId(socket.user.id, targetUserId);
     socket.join(chatId);
     
-    // 加载历史消息
+    // 使用新的分片加载系统加载最近的50条消息
     try {
-      const chatFile = path.join(CHAT_LOGS_DIR, `${chatId}.json`);
-      const history = await fs.readFile(chatFile, 'utf8')
-        .then(data => JSON.parse(data))
-        .catch(() => ({ messages: [] }));
-      socket.emit('chat history', history.messages);
+      const messages = await loadRecentMessages(chatId, 50);
+      socket.emit('chat history', { 
+        messages,
+        hasMore: messages.length > 0 ? true : false,
+        firstMessageId: messages.length > 0 ? messages[0].id : null
+      });
     } catch (error) {
       console.error('Error loading chat history:', error);
+    }
+  });
+
+  // 添加加载更多消息的事件处理
+  socket.on('load more messages', async (data) => {
+    const { targetUserId, beforeMessageId, limit = 30 } = data;
+    const chatId = getChatId(socket.user.id, targetUserId);
+    
+    try {
+      // 加载指定消息之前的历史记录
+      const messages = await loadMessagesBeforeId(chatId, beforeMessageId, limit);
+      socket.emit('more chat history', messages);
+    } catch (error) {
+      console.error('Error loading more chat history:', error);
+      socket.emit('error', { message: '加载历史消息失败' });
     }
   });
 
@@ -445,20 +627,17 @@ io.on('connection', (socket) => {
         timestamp: getLocalISOString()
       };
 
-      // 保存消息到文件
+      // 使用分片存储系统保存消息
       try {
-        const chatFile = path.join(CHAT_LOGS_DIR, `${chatId}.json`);
-        const history = await fs.readFile(chatFile, 'utf8')
-          .then(data => JSON.parse(data))
-          .catch(() => ({ messages: [] }));
+        // 保存消息到分片
+        await saveMessage(chatId, message);
         
-        history.messages.push(message);
-        await fs.writeFile(chatFile, JSON.stringify(history, null, 2));
+        // 发送消息给聊天室
+        io.to(chatId).emit('private message', message);
       } catch (error) {
         console.error('Error saving message:', error);
+        socket.emit('error', { message: '发送消息失败' });
       }
-
-      io.to(chatId).emit('private message', message);
     } catch (error) {
       console.error('Error handling private message:', error);
       socket.emit('error', { message: '发送消息失败' });
@@ -604,6 +783,385 @@ startServer();
 // 辅助函数：生成聊天ID
 function getChatId(user1Id, user2Id) {
   return [user1Id, user2Id].sort().join('_');
+}
+
+// 辅助函数：保存消息到分片存储
+async function saveMessage(chatId, message) {
+  try {
+    // 获取或创建索引文件
+    const indexFile = path.join(CHAT_LOGS_DIR, `${chatId}_index.json`);
+    let indexData;
+    
+    try {
+      const indexContent = await fs.readFile(indexFile, 'utf8');
+      indexData = JSON.parse(indexContent);
+    } catch (err) {
+      // 如果索引文件不存在，创建新的索引数据
+      indexData = {
+        totalMessages: 0,
+        totalShards: 0,
+        lastUpdated: new Date().toISOString(),
+        shards: []
+      };
+    }
+    
+    // 确定消息应该保存到哪个分片
+    const messageTimestamp = new Date(message.timestamp);
+    const messageMonth = `${messageTimestamp.getFullYear()}_${(messageTimestamp.getMonth() + 1).toString().padStart(2, '0')}`;
+    
+    // 查找或创建对应月份的分片
+    let currentShard = indexData.shards.find(shard => shard.id.startsWith(messageMonth));
+    if (!currentShard) {
+      // 创建新的月份分片
+      currentShard = {
+        id: `${messageMonth}_1`,
+        startTimestamp: messageTimestamp.toISOString(),
+        endTimestamp: messageTimestamp.toISOString(),
+        messageCount: 0,
+        size: 0
+      };
+      indexData.shards.push(currentShard);
+      indexData.totalShards++;
+    }
+    
+    // 获取分片数据
+    const shardFile = path.join(CHAT_LOGS_DIR, `${chatId}_${currentShard.id}.json`);
+    let shardData;
+    
+    try {
+      const shardContent = await fs.readFile(shardFile, 'utf8');
+      shardData = JSON.parse(shardContent);
+    } catch (err) {
+      shardData = { messages: [] };
+    }
+    
+    // 检查消息是否已存在
+    const messageExists = shardData.messages.some(m => m.id === message.id);
+    if (!messageExists) {
+      // 添加新消息
+      shardData.messages.push(message);
+      
+      // 按时间戳排序
+      shardData.messages.sort((a, b) => {
+        const timeA = new Date(a.timestamp).getTime();
+        const timeB = new Date(b.timestamp).getTime();
+        return timeA - timeB;
+      });
+      
+      // 更新分片信息
+      currentShard.messageCount = shardData.messages.length;
+      currentShard.endTimestamp = message.timestamp;
+      currentShard.size = Buffer.from(JSON.stringify(shardData)).length;
+      
+      // 更新总消息数
+      indexData.totalMessages++;
+      indexData.lastUpdated = new Date().toISOString();
+      
+      // 保存分片文件
+      await fs.writeFile(shardFile, JSON.stringify(shardData, null, 2));
+      
+      // 保存索引文件
+      await fs.writeFile(indexFile, JSON.stringify(indexData, null, 2));
+      
+      // 更新缓存
+      await chatCache.addMessage(chatId, currentShard.id, message);
+      
+      // 立即同步到磁盘
+      await chatCache.syncKeyToDisk(`${chatId}_${currentShard.id}`);
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Error saving message to shard:', error);
+    return false;
+  }
+}
+
+// 辅助函数：加载最近的消息
+async function loadRecentMessages(chatId, limit) {
+  try {
+    // 获取索引文件
+    const indexFile = path.join(CHAT_LOGS_DIR, `${chatId}_index.json`);
+    
+    // 读取索引文件
+    let indexData;
+    try {
+      const indexContent = await fs.readFile(indexFile, 'utf8');
+      indexData = JSON.parse(indexContent);
+    } catch (err) {
+      console.log(`索引文件不存在: ${indexFile}`);
+      return [];
+    }
+
+    if (!indexData || !indexData.shards || indexData.shards.length === 0) {
+      console.log(`聊天 ${chatId} 没有消息记录`);
+      return [];
+    }
+
+    // 按时间戳排序分片
+    indexData.shards.sort((a, b) => {
+      const timeA = new Date(a.startTimestamp).getTime();
+      const timeB = new Date(b.startTimestamp).getTime();
+      return timeB - timeA; // 降序排序，最新的分片在前
+    });
+
+    // 从最新的分片开始加载消息
+    let allMessages = [];
+    let remainingLimit = limit;
+
+    for (const shard of indexData.shards) {
+      if (remainingLimit <= 0) break;
+
+      try {
+        const shardFile = path.join(CHAT_LOGS_DIR, `${chatId}_${shard.id}.json`);
+        let shardData;
+
+        // 首先尝试从缓存加载
+        const cachedData = await chatCache.get(chatId, shard.id);
+        if (cachedData && cachedData.messages) {
+          shardData = cachedData;
+        } else {
+          // 如果缓存中没有，从文件加载
+          const shardContent = await fs.readFile(shardFile, 'utf8');
+          shardData = JSON.parse(shardContent);
+          // 更新缓存
+          await chatCache.set(chatId, shard.id, shardData);
+        }
+
+        if (shardData.messages && Array.isArray(shardData.messages)) {
+          // 获取最新的消息
+          const sortedMessages = shardData.messages.sort((a, b) => {
+            const timeA = new Date(a.timestamp).getTime();
+            const timeB = new Date(b.timestamp).getTime();
+            return timeB - timeA; // 降序排序
+          });
+
+          allMessages = allMessages.concat(sortedMessages.slice(0, remainingLimit));
+          remainingLimit -= sortedMessages.length;
+        }
+      } catch (err) {
+        console.error(`读取分片 ${shard.id} 失败:`, err);
+        continue;
+      }
+    }
+
+    // 最终排序并限制数量
+    allMessages.sort((a, b) => {
+      const timeA = new Date(a.timestamp).getTime();
+      const timeB = new Date(b.timestamp).getTime();
+      return timeB - timeA; // 降序排序，最新的消息在前
+    });
+
+    const messages = allMessages.slice(0, limit);
+    console.log(`已加载聊天 ${chatId} 的 ${messages.length} 条消息`);
+    
+    // 反转消息顺序，使旧消息在前
+    return messages.reverse();
+  } catch (error) {
+    console.error('加载最近消息失败:', error);
+    return [];
+  }
+}
+
+// 辅助函数：加载指定消息ID之前的消息
+async function loadMessagesBeforeId(chatId, beforeMessageId, limit) {
+  try {
+    // 获取索引文件
+    const indexFile = path.join(CHAT_LOGS_DIR, `${chatId}_index.json`);
+    
+    // 读取索引文件
+    let indexData;
+    try {
+      const indexContent = await fs.readFile(indexFile, 'utf8');
+      indexData = JSON.parse(indexContent);
+    } catch (err) {
+      console.log(`索引文件不存在: ${indexFile}`);
+      return [];
+    }
+
+    if (!indexData || !indexData.shards || indexData.shards.length === 0) {
+      console.log(`聊天 ${chatId} 没有消息记录`);
+      return [];
+    }
+
+    // 按时间戳排序分片
+    indexData.shards.sort((a, b) => {
+      const timeA = new Date(a.startTimestamp).getTime();
+      const timeB = new Date(b.startTimestamp).getTime();
+      return timeB - timeA; // 降序排序，最新的分片在前
+    });
+
+    // 查找目标消息并加载之前的消息
+    let allMessages = [];
+    let foundTargetMessage = false;
+    let targetMessageTime;
+
+    // 首先找到目标消息的时间戳
+    for (const shard of indexData.shards) {
+      try {
+        const shardFile = path.join(CHAT_LOGS_DIR, `${chatId}_${shard.id}.json`);
+        let shardData;
+
+        // 首先尝试从缓存加载
+        const cachedData = await chatCache.get(chatId, shard.id);
+        if (cachedData && cachedData.messages) {
+          shardData = cachedData;
+        } else {
+          // 如果缓存中没有，从文件加载
+          const shardContent = await fs.readFile(shardFile, 'utf8');
+          shardData = JSON.parse(shardContent);
+          // 更新缓存
+          await chatCache.set(chatId, shard.id, shardData);
+        }
+
+        const targetMessage = shardData.messages.find(msg => msg.id === beforeMessageId);
+        if (targetMessage) {
+          targetMessageTime = new Date(targetMessage.timestamp).getTime();
+          foundTargetMessage = true;
+          break;
+        }
+      } catch (err) {
+        console.error(`读取分片 ${shard.id} 失败:`, err);
+        continue;
+      }
+    }
+
+    if (!foundTargetMessage) {
+      console.log(`未找到目标消息 ${beforeMessageId}`);
+      return [];
+    }
+
+    // 加载目标消息之前的消息
+    for (const shard of indexData.shards) {
+      try {
+        const shardFile = path.join(CHAT_LOGS_DIR, `${chatId}_${shard.id}.json`);
+        let shardData;
+
+        // 首先尝试从缓存加载
+        const cachedData = await chatCache.get(chatId, shard.id);
+        if (cachedData && cachedData.messages) {
+          shardData = cachedData;
+        } else {
+          // 如果缓存中没有，从文件加载
+          const shardContent = await fs.readFile(shardFile, 'utf8');
+          shardData = JSON.parse(shardContent);
+          // 更新缓存
+          await chatCache.set(chatId, shard.id, shardData);
+        }
+
+        // 筛选出目标消息之前的消息
+        const olderMessages = shardData.messages.filter(msg => {
+          const msgTime = new Date(msg.timestamp).getTime();
+          return msgTime < targetMessageTime;
+        });
+
+        allMessages = allMessages.concat(olderMessages);
+      } catch (err) {
+        console.error(`读取分片 ${shard.id} 失败:`, err);
+        continue;
+      }
+    }
+
+    // 按时间戳降序排序
+    allMessages.sort((a, b) => {
+      const timeA = new Date(a.timestamp).getTime();
+      const timeB = new Date(b.timestamp).getTime();
+      return timeB - timeA;
+    });
+
+    // 获取指定数量的消息
+    const messages = allMessages.slice(0, limit);
+    console.log(`已加载聊天 ${chatId} 中消息 ${beforeMessageId} 之前的 ${messages.length} 条消息`);
+    
+    // 反转消息顺序，使旧消息在前
+    return messages.reverse();
+  } catch (error) {
+    console.error('加载历史消息失败:', error);
+    return [];
+  }
+}
+
+// 辅助函数：将现有聊天记录迁移到分片存储格式
+async function migrateChat(chatId) {
+  try {
+    // 读取原始聊天记录
+    const chatFile = path.join(CHAT_LOGS_DIR, `${chatId}.json`);
+    const chatData = await fs.readFile(chatFile, 'utf8')
+      .then(data => JSON.parse(data))
+      .catch(() => ({ messages: [] }));
+    
+    if (chatData.messages.length === 0) {
+      console.log(`聊天 ${chatId} 没有消息，跳过迁移`);
+      return;
+    }
+    
+    console.log(`迁移聊天记录 ${chatId}, 消息数: ${chatData.messages.length}`);
+    
+    // 创建索引文件
+    const indexFile = path.join(CHAT_LOGS_DIR, `${chatId}_index.json`);
+    const indexData = {
+      totalMessages: chatData.messages.length,
+      totalShards: Math.ceil(chatData.messages.length / 500),
+      lastUpdated: new Date().toISOString(),
+      shards: []
+    };
+    
+    // 分割消息到分片
+    const shardPromises = [];
+    for (let i = 0; i < indexData.totalShards; i++) {
+      const start = i * 500;
+      const end = Math.min((i + 1) * 500, chatData.messages.length);
+      const shardMessages = chatData.messages.slice(start, end);
+      
+      const shardId = i + 1;
+      const shardFile = path.join(CHAT_LOGS_DIR, `${chatId}_${shardId}.json`);
+      
+      // 添加分片信息到索引
+      indexData.shards.push({
+        id: shardId,
+        startMessageId: shardMessages[0].id,
+        endMessageId: shardMessages[shardMessages.length - 1].id,
+        messageCount: shardMessages.length,
+        timeRange: {
+          start: shardMessages[0].timestamp,
+          end: shardMessages[shardMessages.length - 1].timestamp
+        }
+      });
+      
+      // 保存分片文件
+      shardPromises.push(
+        fs.writeFile(shardFile, JSON.stringify({ messages: shardMessages }, null, 2))
+      );
+    }
+    
+    // 等待所有分片文件写入完成
+    await Promise.all(shardPromises);
+    
+    // 保存索引文件
+    await fs.writeFile(indexFile, JSON.stringify(indexData, null, 2));
+    
+    // 验证所有文件都已正确写入
+    try {
+      // 检查索引文件
+      await fs.access(indexFile);
+      
+      // 检查所有分片文件
+      for (let i = 1; i <= indexData.totalShards; i++) {
+        const shardFile = path.join(CHAT_LOGS_DIR, `${chatId}_${i}.json`);
+        await fs.access(shardFile);
+      }
+      
+      // 所有文件都存在，创建备份但保留原始文件
+      await fs.copyFile(chatFile, path.join(CHAT_LOGS_DIR, `${chatId}.json.bak`));
+      console.log(`聊天 ${chatId} 迁移完成，分成 ${indexData.totalShards} 个分片，原始文件已备份`);
+    } catch (error) {
+      console.error(`迁移验证失败，保留原始文件:`, error);
+      // 迁移验证失败，保留原始文件
+      throw new Error('迁移验证失败');
+    }
+  } catch (error) {
+    console.error(`迁移聊天记录 ${chatId} 失败:`, error);
+  }
 }
 
 // 更新用户状态
