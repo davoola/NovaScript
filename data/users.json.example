@@ -9,7 +9,7 @@
       "role": "admin",
       "createdAt": "2025-05-01T00:00:00.000Z",
       "lastLoginAt": "2025-05-06T14:36:51.618Z",
-      "status": "online",
+      "status": "offline",
       "friends": [
         "02",
         "03",

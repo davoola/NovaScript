@@ -15,7 +15,4 @@ services:
       - ./data/db:/app/data/db
       - ./public/uploads:/app/public/uploads
     restart: unless-stopped
-    # 预先创建必要的目录
-    command: >
-      sh -c "mkdir -p /app/data/db /app/public/uploads &&
-             npm start"
+    
