@@ -134,11 +134,8 @@ async function initialize() {
     if (userList) {
       renderUserList(otherUsers);
 
-      // 自动打开第一个用户的聊天
-      if (otherUsers.length > 0) {
-        const firstUser = otherUsers[0];
-        startChat(firstUser.id, firstUser.username, firstUser.nickname || firstUser.username);
-      }
+      // 显示欢迎页面
+      showWelcomePage();
     }
   } catch (error) {
     console.error('Error initializing:', error);
@@ -147,6 +144,53 @@ async function initialize() {
       window.location.href = '/login';
     }
   }
+}
+
+// 显示欢迎页面
+function showWelcomePage() {
+  // 清空消息容器
+  messageContainer.innerHTML = '';
+  
+  // 隐藏输入区域
+  const inputArea = document.querySelector('.input-area');
+  if (inputArea) {
+    inputArea.style.display = 'none';
+  }
+  
+  // 设置标题
+  chatTitle.textContent = 'NovaScript 欢迎您';
+  
+  // 获取当前用户头像URL
+  const userAvatarUrl = currentUser && currentUser.avatarUrl ? currentUser.avatarUrl : '/images/avatars/default.png';
+  
+  // 创建欢迎页面内容
+  const welcomeContent = document.createElement('div');
+  welcomeContent.className = 'welcome-page';
+  welcomeContent.innerHTML = `
+    <div class="welcome-content">
+      <div class="welcome-header">
+        <img src="${userAvatarUrl}" alt="欢迎" class="welcome-logo">
+        <h1>欢迎使用 NovaScript 聊天系统</h1>
+      </div>
+      <div class="welcome-message">
+        <p>这是一个基于Node.js和Socket.IO的实时聊天应用。</p>
+        <p>您可以：</p>
+        <ul>
+          <li>从左侧 <strong>好友列表</strong> 中选择一位好友进行聊天</li>
+          <li>发送富文本消息，支持 <strong>Markdown</strong> 语法</li>
+          <li>分享图片、视频和其他文件</li>
+          <li>使用公式和图表功能进行复杂表达</li>
+        </ul>
+        <div class="welcome-tip">
+          <i class="fas fa-lightbulb"></i>
+          <p>提示：点击左侧好友列表中的用户名称开始聊天</p>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  // 将欢迎页面添加到消息容器
+  messageContainer.appendChild(welcomeContent);
 }
 
 // 初始化 Socket.IO 连接
@@ -223,8 +267,11 @@ function initializeSocket() {
       if (loadMoreBtn) {
         loadMoreBtn.parentNode.remove();
       }
+      console.log('没有更多历史消息');
       return;
     }
+    
+    console.log(`已加载 ${messages.length} 条历史消息`);
     
     // 记录当前滚动位置和第一个元素
     const firstVisibleElement = messageContainer.firstElementChild;
@@ -252,11 +299,15 @@ function initializeSocket() {
       messageContainer.insertBefore(messageElement, messageContainer.firstChild);
     }
     
-    // 如果还有更多历史消息，添加新的加载按钮
-    if (messages.length >= 30) {
-      addLoadMoreButton();
-    } else {
+    // 只有当消息数量少于请求的限制时，才设置没有更多消息
+    // 默认限制通常是50条
+    if (messages.length < 50) {
       hasMoreMessages = false;
+      console.log('已加载全部历史消息');
+    } else {
+      hasMoreMessages = true;
+      addLoadMoreButton();
+      console.log('可能还有更多历史消息');
     }
     
     // 恢复滚动位置，保持用户查看的位置不变
@@ -379,6 +430,12 @@ function startChat(userId, username, nickname) {
   // 清空消息容器
   messageContainer.innerHTML = '';
   
+  // 显示输入区域
+  const inputArea = document.querySelector('.input-area');
+  if (inputArea) {
+    inputArea.style.display = 'flex';
+  }
+  
   // 发送加入聊天的请求
   socket.emit('join chat', userId);
   
@@ -393,6 +450,8 @@ function startChat(userId, username, nickname) {
   // 确保DOM更新后滚动到底部
   setTimeout(() => {
     scrollToBottom();
+    // 确保图片点击事件绑定
+    setupMessageImageClickHandlers();
   }, 100);
 }
 
@@ -400,6 +459,135 @@ function startChat(userId, username, nickname) {
 function isFriend(userId) {
   // 从服务器返回的当前用户数据中获取好友列表
   return currentUser && currentUser.friends && currentUser.friends.includes(userId);
+}
+
+// 初始化Lightbox
+function initializeLightbox() {
+  // 创建lightbox元素
+  const lightbox = document.createElement('div');
+  lightbox.className = 'lightbox';
+  lightbox.innerHTML = `
+    <div class="lightbox-content">
+      <span class="lightbox-close">&times;</span>
+      <img class="lightbox-image">
+      <div class="lightbox-counter"></div>
+      <div class="lightbox-nav">
+        <button class="lightbox-prev">&lt;</button>
+        <button class="lightbox-next">&gt;</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(lightbox);
+  
+  // 关闭按钮事件
+  const closeButton = lightbox.querySelector('.lightbox-close');
+  closeButton.addEventListener('click', () => {
+    lightbox.classList.remove('active');
+  });
+  
+  // 点击背景关闭
+  lightbox.addEventListener('click', (e) => {
+    if (e.target === lightbox) {
+      lightbox.classList.remove('active');
+    }
+  });
+  
+  // ESC键关闭
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && lightbox.classList.contains('active')) {
+      lightbox.classList.remove('active');
+    }
+  });
+  
+  return lightbox;
+}
+
+// 全局lightbox实例
+let lightboxInstance = null;
+
+// 处理图片点击打开lightbox
+function setupMessageImageClickHandlers() {
+  // 确保有lightbox实例
+  if (!lightboxInstance) {
+    lightboxInstance = initializeLightbox();
+  }
+  
+  // 获取所有消息图片
+  const messageImages = document.querySelectorAll('.message-image');
+  if (messageImages.length === 0) return;
+  
+  // 为每个图片添加点击事件
+  messageImages.forEach((img, index) => {
+    // 移除旧的事件
+    const newImg = img.cloneNode(true);
+    img.parentNode.replaceChild(newImg, img);
+    
+    // 添加新的点击事件
+    newImg.addEventListener('click', () => {
+      const lightboxImg = lightboxInstance.querySelector('.lightbox-image');
+      lightboxImg.src = newImg.src;
+      lightboxInstance.classList.add('active');
+      
+      // 更新计数器
+      const counter = lightboxInstance.querySelector('.lightbox-counter');
+      counter.textContent = `${index + 1} / ${messageImages.length}`;
+      
+      // 设置当前索引
+      lightboxInstance.dataset.currentIndex = index;
+      
+      // 更新导航按钮状态
+      updateLightboxNavigation(messageImages.length);
+    });
+  });
+  
+  // 设置上一张/下一张按钮事件
+  const prevButton = lightboxInstance.querySelector('.lightbox-prev');
+  const nextButton = lightboxInstance.querySelector('.lightbox-next');
+  
+  prevButton.onclick = () => {
+    navigateLightbox('prev', messageImages);
+  };
+  
+  nextButton.onclick = () => {
+    navigateLightbox('next', messageImages);
+  };
+}
+
+// 更新lightbox导航按钮状态
+function updateLightboxNavigation(totalImages) {
+  const prevButton = lightboxInstance.querySelector('.lightbox-prev');
+  const nextButton = lightboxInstance.querySelector('.lightbox-next');
+  const currentIndex = parseInt(lightboxInstance.dataset.currentIndex || 0);
+  
+  prevButton.style.display = currentIndex > 0 ? 'block' : 'none';
+  nextButton.style.display = currentIndex < totalImages - 1 ? 'block' : 'none';
+}
+
+// 导航切换图片
+function navigateLightbox(direction, images) {
+  const currentIndex = parseInt(lightboxInstance.dataset.currentIndex || 0);
+  let newIndex;
+  
+  if (direction === 'prev') {
+    newIndex = Math.max(0, currentIndex - 1);
+  } else {
+    newIndex = Math.min(images.length - 1, currentIndex + 1);
+  }
+  
+  if (newIndex !== currentIndex) {
+    const lightboxImg = lightboxInstance.querySelector('.lightbox-image');
+    lightboxImg.src = images[newIndex].src;
+    
+    // 更新计数器
+    const counter = lightboxInstance.querySelector('.lightbox-counter');
+    counter.textContent = `${newIndex + 1} / ${images.length}`;
+    
+    // 更新当前索引
+    lightboxInstance.dataset.currentIndex = newIndex;
+    
+    // 更新导航按钮状态
+    updateLightboxNavigation(images.length);
+  }
 }
 
 // 渲染消息
@@ -540,6 +728,8 @@ function renderMessage(message, shouldScroll = true) {
       if (shouldScroll) {
         scrollToBottom();
       }
+      // 添加图片点击事件 - 重要！
+      setupMessageImageClickHandlers();
     });
   } else if (shouldScroll) {
     scrollToBottom();
@@ -554,6 +744,11 @@ function renderMessage(message, shouldScroll = true) {
     if (hasFormulas) {
       // console.log('消息包含数学公式，已渲染');
     }
+  }
+
+  // 在每次渲染消息后都更新图片点击处理
+  if (message.type === 'image') {
+    setupMessageImageClickHandlers();
   }
 
   return messageElement;
@@ -1027,6 +1222,9 @@ document.addEventListener('DOMContentLoaded', () => {
     initializeMermaid();
     // console.log('Mermaid 初始化成功');
     
+    // 初始化Lightbox
+    lightboxInstance = initializeLightbox();
+    
     // 为图表帮助按钮添加事件监听器
     const diagramHelpBtn = document.querySelector('.diagram-help-btn');
     if (diagramHelpBtn) {
@@ -1034,14 +1232,22 @@ document.addEventListener('DOMContentLoaded', () => {
       // console.log('图表帮助按钮初始化成功');
     }
     
+    // 添加socket错误处理
+    socket.on('error', (error) => {
+      console.error('Socket错误:', error.message);
+      alert('发生错误: ' + error.message);
+    });
+    
     // 初始化应用
     initialize().catch(error => {
-      console.error('Initialization failed:', error);
+      console.error('初始化失败:', error);
     });
     
     // 等待一小段时间确保所有内容都已加载
     setTimeout(() => {
       scrollToBottom();
+      // 确保为现有图片添加点击事件
+      setupMessageImageClickHandlers();
     }, 500);
   } catch (error) {
     console.error('初始化过程中出错:', error);
@@ -1154,8 +1360,16 @@ function logout() {
 
 // 自动调整文本框高度
 function adjustTextareaHeight(textarea) {
-  textarea.style.height = 'auto';
-  textarea.style.height = Math.min(textarea.scrollHeight, 150) + 'px';
+  textarea.style.height = '40px'; // 重置高度为初始值
+  const newHeight = Math.min(textarea.scrollHeight, 150);
+  textarea.style.height = newHeight + 'px';
+  
+  // 获取发送按钮
+  const sendBtn = textarea.parentElement.querySelector('.send-btn');
+  if (sendBtn) {
+    // 确保发送按钮垂直居中
+    sendBtn.style.top = `${newHeight / 2}px`;
+  }
 }
 
 // 事件监听
@@ -1165,7 +1379,14 @@ messageForm.addEventListener('submit', (e) => {
   if (message) {
     sendMessage(message);
     messageInput.value = '';
-    messageInput.style.height = 'auto';
+    messageInput.style.height = '40px'; // 重置为初始高度
+    
+    // 重置发送按钮位置
+    const sendBtn = messageInput.parentElement.querySelector('.send-btn');
+    if (sendBtn) {
+      sendBtn.style.top = '50%';
+      sendBtn.style.transform = 'translateY(-50%)';
+    }
   }
 });
 
@@ -1186,7 +1407,14 @@ messageInput.addEventListener('keydown', (e) => {
       if (message) {
         sendMessage(message);
         messageInput.value = '';
-        messageInput.style.height = 'auto';
+        messageInput.style.height = '40px'; // 重置为初始高度
+        
+        // 重置发送按钮位置
+        const sendBtn = messageInput.parentElement.querySelector('.send-btn');
+        if (sendBtn) {
+          sendBtn.style.top = '50%';
+          sendBtn.style.transform = 'translateY(-50%)';
+        }
       }
     }
   }
@@ -1592,266 +1820,101 @@ gantt
 <p>更多语法和示例请参考 <a href="https://mermaid.js.org/syntax/flowchart.html" target="_blank">Mermaid官方文档</a></p>
 `;
 
-  // 创建一个模态框
+  // 创建帮助模态框
   const modal = document.createElement('div');
-  modal.className = 'modal';
-  modal.style.display = 'block';
-  
-  const modalContent = document.createElement('div');
-  modalContent.className = 'modal-content';
-  modalContent.style.width = '80%';
-  modalContent.style.maxWidth = '800px';
-  
-  // 先设置内容
-  modalContent.innerHTML = helpContent;
-  
-  // 然后添加关闭按钮
-  const closeBtn = document.createElement('span');
-  closeBtn.className = 'close';
-  closeBtn.innerHTML = '&times;';
-  closeBtn.addEventListener('click', () => {
-    document.body.removeChild(modal);
-  });
-  modalContent.appendChild(closeBtn);
-  
-  modal.appendChild(modalContent);
-  document.body.appendChild(modal);
-  
-  // ESC键关闭图表帮助模态框
-  function closeDiagramHelpOnEsc(event) {
-    if (event.key === 'Escape') {
-      document.body.removeChild(modal);
-      // 移除ESC键监听
-      document.removeEventListener('keydown', closeDiagramHelpOnEsc);
-    }
-  }
-  
-  // 添加ESC键监听
-  document.addEventListener('keydown', closeDiagramHelpOnEsc);
-  
-  // 点击模态框外部关闭
-  window.addEventListener('click', function(event) {
-    if (event.target === modal) {
-      document.body.removeChild(modal);
-      // 移除ESC键监听
-      document.removeEventListener('keydown', closeDiagramHelpOnEsc);
-    }
-  });
-  
-  // 修改关闭按钮事件
-  closeBtn.addEventListener('click', () => {
-    document.body.removeChild(modal);
-    // 移除ESC键监听
-    document.removeEventListener('keydown', closeDiagramHelpOnEsc);
-  });
-  
-  // 为代码块添加复制按钮
-  setTimeout(() => {
-    const codeBlocks = modal.querySelectorAll('pre');
-    codeBlocks.forEach(block => {
-      // 创建复制按钮
-      const copyButton = document.createElement('button');
-      copyButton.className = 'code-copy-btn';
-      copyButton.innerHTML = '<i class="fas fa-copy"></i>';
-      copyButton.title = '复制代码';
-      
-      // 添加点击事件
-      copyButton.addEventListener('click', () => {
-        const codeText = block.textContent;
-        
-        copyTextToClipboard(codeText, (success) => {
-          // 更新按钮图标以提供反馈
-          const originalIcon = copyButton.innerHTML;
-          if (success) {
-            copyButton.innerHTML = '<i class="fas fa-check"></i>';
-          } else {
-            copyButton.innerHTML = '<i class="fas fa-times"></i>';
-          }
-          
-          // 2秒后恢复原始图标
-          setTimeout(() => {
-            copyButton.innerHTML = originalIcon;
-          }, 2000);
-        });
-      });
-      
-      // 将按钮添加到代码块
-      block.appendChild(copyButton);
-    });
-  }, 100);
-}
-
-// 初始化 Lightbox
-function initializeLightbox() {
-  // 创建 Lightbox 元素
-  const lightbox = document.createElement('div');
-  lightbox.className = 'lightbox';
-  lightbox.innerHTML = `
-    <div class="lightbox-content">
-      <img class="lightbox-image" src="" alt="图片预览">
-      <div class="lightbox-nav">
-        <button class="lightbox-prev"><i class="fas fa-chevron-left"></i></button>
-        <button class="lightbox-next"><i class="fas fa-chevron-right"></i></button>
+  modal.className = 'diagram-help-modal';
+  modal.innerHTML = `
+    <div class="modal-content">
+      <span class="close">&times;</span>
+      <h2>图表语法帮助</h2>
+      <div class="help-content">
+        ${helpContent}
       </div>
-      <button class="lightbox-close">&times;</button>
-      <div class="lightbox-counter"></div>
     </div>
   `;
-  document.body.appendChild(lightbox);
 
-  let currentImageIndex = 0;
-  let images = [];
-
-  // 更新图片列表
-  function updateImagesList() {
-    images = Array.from(document.querySelectorAll('.message-image, .message-bubble img')).filter(img => 
-      !img.closest('.emoji-item') && // 排除表情符号
-      !img.closest('.mermaid') && // 排除 mermaid 图表
-      img.src && img.src.startsWith('http') // 确保是有效的图片URL
-    );
-  }
-
-  // 显示指定索引的图片
-  function showImage(index) {
-    updateImagesList();
-    if (images.length === 0) return;
-
-    currentImageIndex = (index + images.length) % images.length;
-    const img = images[currentImageIndex];
-    const lightboxImg = lightbox.querySelector('.lightbox-image');
-    lightboxImg.src = img.src;
-    
-    // 更新计数器
-    const counter = lightbox.querySelector('.lightbox-counter');
-    counter.textContent = `${currentImageIndex + 1} / ${images.length}`;
-    
-    lightbox.classList.add('active');
-  }
-
-  // 关闭 Lightbox
-  function closeLightbox() {
-    lightbox.classList.remove('active');
-  }
-
-  // 下一张图片
-  function nextImage() {
-    showImage(currentImageIndex + 1);
-  }
-
-  // 上一张图片
-  function prevImage() {
-    showImage(currentImageIndex - 1);
-  }
-
-  // 事件监听
-  document.addEventListener('click', (e) => {
-    const clickedImage = e.target.closest('.message-image, .message-bubble img');
-    if (clickedImage && 
-        !clickedImage.closest('.emoji-item') && 
-        !clickedImage.closest('.mermaid')) {
-      updateImagesList();
-      const index = images.indexOf(clickedImage);
-      if (index !== -1) {
-        showImage(index);
-      }
-    }
+  // 添加关闭事件
+  const closeBtn = modal.querySelector('.close');
+  closeBtn.addEventListener('click', () => {
+    document.body.removeChild(modal);
   });
-
-  // 关闭按钮点击事件
-  lightbox.querySelector('.lightbox-close').addEventListener('click', (e) => {
-    e.stopPropagation();
-    closeLightbox();
-  });
-
-  // 上一张按钮点击事件
-  lightbox.querySelector('.lightbox-prev').addEventListener('click', (e) => {
-    e.stopPropagation();
-    prevImage();
-  });
-
-  // 下一张按钮点击事件
-  lightbox.querySelector('.lightbox-next').addEventListener('click', (e) => {
-    e.stopPropagation();
-    nextImage();
-  });
-
-  // 点击背景关闭
-  lightbox.addEventListener('click', (e) => {
-    if (e.target === lightbox) {
-      closeLightbox();
-    }
-  });
-
-  // 键盘事件
+  
+  // 将模态框添加到页面
+  document.body.appendChild(modal);
+  
+  // 添加ESC键监听
   document.addEventListener('keydown', (e) => {
-    if (!lightbox.classList.contains('active')) return;
-
-    switch (e.key) {
-      case 'Escape':
-        closeLightbox();
-        break;
-      case 'ArrowLeft':
-        prevImage();
-        break;
-      case 'ArrowRight':
-        nextImage();
-        break;
+    if (e.key === 'Escape') {
+      document.body.removeChild(modal);
     }
   });
 }
 
-// 在页面加载完成后初始化 Lightbox
-document.addEventListener('DOMContentLoaded', () => {
-  initializeLightbox();
-});
-
-// 添加"加载更多"按钮
+// 添加加载更多按钮
 function addLoadMoreButton() {
-  // 如果已有加载按钮，不重复添加
-  if (document.getElementById('load-more-btn')) return;
+  if (document.getElementById('load-more-btn')) {
+    return; // 按钮已存在
+  }
   
-  const loadMoreDiv = document.createElement('div');
-  loadMoreDiv.className = 'load-more-container';
-  loadMoreDiv.innerHTML = `
-    <button id="load-more-btn" class="load-more-btn">
-      查看更多消息
-    </button>
-  `;
+  const loadMoreWrapper = document.createElement('div');
+  loadMoreWrapper.className = 'load-more-wrapper';
   
-  messageContainer.insertBefore(loadMoreDiv, messageContainer.firstChild);
+  const loadMoreBtn = document.createElement('button');
+  loadMoreBtn.id = 'load-more-btn';
+  loadMoreBtn.className = 'load-more-btn';
+  loadMoreBtn.innerHTML = '查看更多消息';
   
-  // 添加点击事件
-  document.getElementById('load-more-btn').addEventListener('click', loadMoreMessages);
-}
-
-// 加载更多消息
-function loadMoreMessages() {
-  if (isLoadingMore || !hasMoreMessages || !firstLoadedMessageId || !currentChat) return;
-  
-  const loadMoreBtn = document.getElementById('load-more-btn');
-  loadMoreBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 加载中...';
+  // 点击加载更多
+  loadMoreBtn.addEventListener('click', () => {
+    if (isLoadingMore || !firstLoadedMessageId || !currentChat) return;
+    
   isLoadingMore = true;
+    loadMoreBtn.innerHTML = '<div class="loading-spinner"></div> 加载中...';
   
-  // 发送加载更多请求
+    // 发送请求加载更多消息，修正参数名与服务器匹配
   socket.emit('load more messages', {
     targetUserId: currentChat.id,
     beforeMessageId: firstLoadedMessageId,
-    limit: 30
+    limit: 50
   });
+    
+    console.log('请求加载更多消息:', {
+      targetUserId: currentChat.id,
+      beforeMessageId: firstLoadedMessageId
+    });
+  });
+  
+  loadMoreWrapper.appendChild(loadMoreBtn);
+  messageContainer.insertBefore(loadMoreWrapper, messageContainer.firstChild);
 }
 
-// 辅助函数：等待媒体加载
+// 等待媒体加载完成
 function waitForMediaLoad() {
   const mediaElements = messageContainer.querySelectorAll('img, video, audio');
+  
+  if (mediaElements.length === 0) {
+    return Promise.resolve();
+  }
+  
   return Promise.all(
     Array.from(mediaElements).map(media => {
       return new Promise((resolve) => {
-        if (media.complete || media.readyState >= 2) {
+        if (media instanceof HTMLImageElement) {
+          if (media.complete) {
           resolve();
         } else {
           media.addEventListener('load', resolve);
+            media.addEventListener('error', resolve);
+          }
+        } else if ((media instanceof HTMLVideoElement || media instanceof HTMLAudioElement)) {
+          if (media.readyState >= 2) {
+            resolve();
+          } else {
           media.addEventListener('loadedmetadata', resolve);
           media.addEventListener('error', resolve);
+          }
+        } else {
+          resolve();
         }
       });
     })

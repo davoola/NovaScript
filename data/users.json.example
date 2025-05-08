@@ -7,15 +7,15 @@
       "password": "123456",
       "avatarUrl": "/images/avatars/default.png",
       "role": "admin",
-      "createdAt": "2025-01-01T00:00:00.000Z",
-      "lastLoginAt": "2025-03-15T00:00:00.000Z",
+      "createdAt": "2025-05-01T00:00:00.000Z",
+      "lastLoginAt": "2025-05-06T14:36:51.618Z",
       "status": "online",
       "friends": [
         "02",
         "03",
         "04"
       ],
-      "lastStatusChange": "2025-03-15T00:00:00.000Z"
+      "lastStatusChange": "2025-05-06T14:36:46.622Z"
     },
     {
       "id": "02",
@@ -24,14 +24,14 @@
       "password": "123456",
       "avatarUrl": "/images/avatars/female.png",
       "role": "user",
-      "createdAt": "2025-01-01T00:00:00.000Z",
-      "lastLoginAt": "2025-03-15T00:00:00.000Z",
-      "status": "online",
+      "createdAt": "2025-05-01T00:00:00.000Z",
+      "lastLoginAt": "2025-05-06T00:00:00.000Z",
+      "status": "offline",
       "friends": [
         "01",
         "04"
       ],
-      "lastStatusChange": "2025-03-15T00:00:00.000Z"
+      "lastStatusChange": "2025-05-06T00:00:00.000Z"
     },
     {
       "id": "03",
@@ -40,13 +40,13 @@
       "password": "123456",
       "avatarUrl": "/images/avatars/boy.png",
       "role": "user",
-      "createdAt": "2025-01-01T00:00:00.000Z",
-      "lastLoginAt": "2025-03-15T00:00:00.000Z",
+      "createdAt": "2025-05-01T00:00:00.000Z",
+      "lastLoginAt": "2025-05-06T00:00:00.000Z",
       "status": "offline",
       "friends": [
         "01"
       ],
-      "lastStatusChange": "2025-03-15T00:00:00.000Z"
+      "lastStatusChange": "2025-05-06T00:00:00.000Z"
     },
     {
       "id": "04",
@@ -55,14 +55,14 @@
       "password": "123456",
       "avatarUrl": "/images/avatars/girl.png",
       "role": "user",
-      "createdAt": "2025-01-01T00:00:00.000Z",
-      "lastLoginAt": "2025-03-15T00:00:00.000Z",
+      "createdAt": "2025-05-01T00:00:00.000Z",
+      "lastLoginAt": "2025-05-06T00:00:00.000Z",
       "status": "offline",
       "friends": [
         "01",
         "02"
       ],
-      "lastStatusChange": "2025-03-15T00:00:00.000Z"
+      "lastStatusChange": "2025-05-06T00:00:00.000Z"
     }
   ]
 }

@@ -12,6 +12,8 @@ import path from 'path';
 import { markedEmoji } from 'marked-emoji';
 import emojiToolkit from 'emoji-toolkit';
 import NodeCache from 'node-cache';
+// 导入数据库服务
+import { initDbConnection, closeDbConnection, userService, messageService, isUsersTableEmpty } from './scripts/database.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -33,8 +35,6 @@ app.use(express.json());
 app.use(express.static('public'));
 
 // Initialize users data
-const USERS_FILE = 'data/users.json';
-
 // 配置文件上传
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
@@ -152,183 +152,24 @@ marked.setOptions({
   ]
 });
 
-// 初始化聊天记录目录
-const CHAT_LOGS_DIR = 'data/chats';
-await fs.mkdir(CHAT_LOGS_DIR, { recursive: true });
+// 初始化数据库连接
+await initDbConnection();
 
-// ChatCache类 - 用于缓存聊天记录
-class ChatCache {
-  constructor(maxSize = 100, stdTTL = 3600) {
-    this.cache = new NodeCache({
-      stdTTL, // 默认过期时间：1小时
-      checkperiod: 600, // 每10分钟检查过期的key
-      useClones: false // 避免深度复制，提高性能
-    });
-    this.maxSize = maxSize;
-    this.keysByAccess = []; // 用于实现LRU
-    this.dirtyKeys = new Set(); // 用于标记需要同步到磁盘的缓存
-    
-    // 设置定时同步
-    this.syncInterval = setInterval(() => this.syncToDisk(), 5 * 60 * 1000); // 每5分钟
-  }
-  
-  // 获取聊天记录
-  async get(chatId, shardId) {
-    const key = `${chatId}_${shardId}`;
-    let data = this.cache.get(key);
-    
-    if (data) {
-      // 更新访问记录
-      this.updateKeyAccess(key);
-      return data;
-    }
-    
-    // 缓存未命中，从文件加载
-    try {
-      const shardFile = path.join(CHAT_LOGS_DIR, `${chatId}_${shardId}.json`);
-      data = await fs.readFile(shardFile, 'utf8')
-        .then(content => JSON.parse(content))
-        .catch(() => ({ messages: [] }));
-      
-      // 添加到缓存
-      this.set(chatId, shardId, data);
-      return data;
-    } catch (error) {
-      console.error(`Error loading shard ${chatId}_${shardId} from disk:`, error);
-      return { messages: [] };
-    }
-  }
-  
-  // 设置缓存
-  set(chatId, shardId, data) {
-    const key = `${chatId}_${shardId}`;
-    
-    // 如果缓存已满，删除最久未访问的项
-    if (this.cache.keys().length >= this.maxSize && !this.cache.has(key)) {
-      this.evictLRU();
-    }
-    
-    // 添加到缓存
-    this.cache.set(key, data);
-    this.updateKeyAccess(key);
-    this.markDirty(key);
-  }
-  
-  // 添加消息到缓存中的分片
-  async addMessage(chatId, shardId, message) {
-    const key = `${chatId}_${shardId}`;
-    let data = this.cache.get(key);
-    
-    if (!data) {
-      // 如果分片不在缓存中，先加载它
-      data = await this.get(chatId, shardId);
-    }
-    
-    // 检查消息是否已存在
-    const messageExists = data.messages.some(m => m.id === message.id);
-    if (!messageExists) {
-      // 添加消息
-      data.messages.push(message);
-      
-      // 按时间戳排序
-      data.messages.sort((a, b) => {
-        const timeA = new Date(a.timestamp).getTime();
-        const timeB = new Date(b.timestamp).getTime();
-        return timeA - timeB;
-      });
-      
-      // 更新缓存并标记为脏数据
-      this.cache.set(key, data);
-      this.updateKeyAccess(key);
-      this.markDirty(key);
-    }
-  }
-  
-  // 标记为脏数据
-  markDirty(key) {
-    this.dirtyKeys.add(key);
-  }
-  
-  // 更新访问记录
-  updateKeyAccess(key) {
-    const index = this.keysByAccess.indexOf(key);
-    if (index > -1) {
-      this.keysByAccess.splice(index, 1);
-    }
-    this.keysByAccess.push(key);
-  }
-  
-  // 驱逐最久未访问的缓存项
-  evictLRU() {
-    if (this.keysByAccess.length > 0) {
-      const oldestKey = this.keysByAccess.shift();
-      
-      // 如果是脏数据，先同步到磁盘
-      if (this.dirtyKeys.has(oldestKey)) {
-        this.syncKeyToDisk(oldestKey)
-          .catch(err => console.error(`Error syncing evicted key ${oldestKey} to disk:`, err));
-      }
-      
-      this.cache.del(oldestKey);
-    }
-  }
-  
-  // 同步所有脏数据到磁盘
-  async syncToDisk() {
-    const promises = [];
-    for (const key of this.dirtyKeys) {
-      promises.push(this.syncKeyToDisk(key));
-    }
-    
-    // 清空脏数据标记
-    this.dirtyKeys.clear();
-    
-    return Promise.all(promises);
-  }
-  
-  // 同步单个键到磁盘
-  async syncKeyToDisk(key) {
-    const data = this.cache.get(key);
-    if (!data) return;
-    
-    const [chatId, shardId] = key.split('_');
-    const shardFile = path.join(CHAT_LOGS_DIR, `${chatId}_${shardId}.json`);
-    
-    try {
-      // 写入分片文件
-      await fs.writeFile(shardFile, JSON.stringify(data, null, 2));
-      this.dirtyKeys.delete(key);
-    } catch (error) {
-      console.error(`Error syncing key ${key} to disk:`, error);
-      // 保留脏标记，下次继续尝试
-    }
-  }
-  
-  // 清理资源
-  close() {
-    clearInterval(this.syncInterval);
-    return this.syncToDisk(); // 同步所有脏数据
-  }
-}
-
-// 初始化缓存系统
-const chatCache = new ChatCache(50); // 最多缓存50个分片
-
-// 在应用退出时同步缓存
+// 在应用退出时关闭数据库连接
 process.on('SIGINT', async () => {
-  console.log('Syncing chat cache to disk before exit...');
-  await chatCache.syncToDisk();
+  console.log('Closing database connection before exit...');
+  await closeDbConnection();
   process.exit(0);
 });
 
 async function initializeDataDirectory() {
   try {
+    // 创建主数据目录
     await fs.mkdir('data', { recursive: true });
-    try {
-      await fs.access(USERS_FILE);
-    } catch {
-      await fs.writeFile(USERS_FILE, JSON.stringify({ users: [] }));
-    }
+    
+    // 确保数据库目录存在
+    await fs.mkdir('data/db', { recursive: true });
+    
   } catch (error) {
     console.error('Error initializing data directory:', error);
   }
@@ -411,9 +252,9 @@ io.on('connection', (socket) => {
     const chatId = getChatId(socket.user.id, targetUserId);
     socket.join(chatId);
     
-    // 使用新的分片加载系统加载最近的50条消息
+    // 使用新的分片加载系统加载最近的80条消息
     try {
-      const messages = await loadRecentMessages(chatId, 50);
+      const messages = await loadRecentMessages(chatId, 80);
       socket.emit('chat history', { 
         messages,
         hasMore: messages.length > 0 ? true : false,
@@ -426,12 +267,22 @@ io.on('connection', (socket) => {
 
   // 添加加载更多消息的事件处理
   socket.on('load more messages', async (data) => {
-    const { targetUserId, beforeMessageId, limit = 30 } = data;
+    const { targetUserId, beforeMessageId, limit = 50 } = data;
+    console.log('收到加载更多消息请求:', { 
+      userId: socket.user.id, 
+      targetUserId, 
+      beforeMessageId, 
+      limit 
+    });
+    
     const chatId = getChatId(socket.user.id, targetUserId);
+    console.log(`尝试为聊天 ${chatId} 加载更多消息，起始消息ID: ${beforeMessageId}`);
     
     try {
       // 加载指定消息之前的历史记录
       const messages = await loadMessagesBeforeId(chatId, beforeMessageId, limit);
+      console.log(`已为聊天 ${chatId} 加载 ${messages.length} 条更多消息`);
+      
       socket.emit('more chat history', messages);
     } catch (error) {
       console.error('Error loading more chat history:', error);
@@ -582,15 +433,15 @@ io.on('connection', (socket) => {
     
     // 验证好友关系
     try {
-      const usersData = JSON.parse(await fs.readFile(USERS_FILE, 'utf8'));
-      const currentUser = usersData.users.find(u => u.id === userId);
+      // 使用数据库验证好友关系
+      const isFriend = await userService.checkFriendship(socket.user.id, targetUserId);
       
-      if (!currentUser || !currentUser.friends.includes(targetUserId)) {
+      if (!isFriend) {
         socket.emit('error', { message: '只能与好友聊天' });
         return;
       }
       
-      const chatId = getChatId(userId, targetUserId);
+      const chatId = getChatId(socket.user.id, targetUserId);
       
       // 处理文本内容
       let processedContent = content;
@@ -627,10 +478,18 @@ io.on('connection', (socket) => {
         timestamp: getLocalISOString()
       };
 
-      // 使用分片存储系统保存消息
+      // 保存消息到数据库
       try {
-        // 保存消息到分片
+        // 保存消息
         await saveMessage(chatId, message);
+        
+        // 获取发送者的用户信息，以获取头像URL
+        const sender = await userService.getUserById(socket.user.id);
+        
+        // 添加发送者的头像信息
+        if (sender && sender.avatar_url) {
+          message.senderAvatar = sender.avatar_url;
+        }
         
         // 发送消息给聊天室
         io.to(chatId).emit('private message', message);
@@ -677,30 +536,32 @@ function getLocalISOString() {
 
 // 注册路由
 app.post('/api/auth/register', async (req, res) => {
-  const { username, password, email } = req.body;
+  const { username, password, email, nickname } = req.body;
 
   try {
-    const usersData = JSON.parse(await fs.readFile(USERS_FILE, 'utf8'));
-    
     // 检查用户是否已存在
-    if (usersData.users.some(u => u.username === username)) {
+    const existingUser = await userService.getUserByUsername(username);
+    if (existingUser) {
       return res.status(400).json({ message: '用户名已存在' });
     }
 
     // 加密密码
     const hashedPassword = await bcrypt.hash(password, 10);
 
+    // 创建新用户，注意字段名与数据库一致
     const newUser = {
       id: Date.now().toString(),
       username,
+      nickname: nickname || username,
       password: hashedPassword,
-      email,
-      createdAt: getLocalISOString(),
+      avatar_url: '/images/avatars/default.png', // 使用与数据库字段一致的名称
+      role: 'user',
+      createdAt: new Date().toISOString(),
       status: 'offline'
     };
 
-    usersData.users.push(newUser);
-    await fs.writeFile(USERS_FILE, JSON.stringify(usersData, null, 2));
+    // 保存到数据库
+    await userService.addUser(newUser);
 
     res.status(201).json({ message: '注册成功' });
   } catch (error) {
@@ -712,24 +573,34 @@ app.post('/api/auth/register', async (req, res) => {
 // 获取用户列表（只返回好友）
 app.get('/api/users', authenticateToken, async (req, res) => {
   try {
-    const usersData = JSON.parse(await fs.readFile(USERS_FILE, 'utf8'));
-    const currentUser = usersData.users.find(u => u.id === req.user.id);
+    // 从数据库获取用户的好友列表
+    const friends = await userService.getUserFriends(req.user.id);
     
-    if (!currentUser) {
-      return res.status(404).json({ message: '用户不存在' });
+    if (!friends) {
+      return res.status(404).json({ message: '未找到好友' });
     }
 
-    // 只返回好友列表中的用户
-    const friends = usersData.users.filter(user => 
-      currentUser.friends.includes(user.id)
-    ).map(({ password, ...user }) => ({
-      ...user,
-      status: userSessions.has(user.id) ? 'online' : 'offline'
-    }));
+    // 对每个好友，添加在线状态信息
+    const friendsWithStatus = friends.map(friend => {
+      const friendData = {
+        ...friend,
+        status: userSessions.has(friend.id) ? 'online' : friend.status || 'offline',
+        // 移除密码字段
+        password: undefined
+      };
+      
+      // 字段映射，确保与前端期望的字段名一致
+      if (friendData.avatar_url) {
+        friendData.avatarUrl = friendData.avatar_url;
+        delete friendData.avatar_url;
+      }
+      
+      return friendData;
+    });
 
-    res.json(friends);
+    res.json(friendsWithStatus);
   } catch (error) {
-    console.error('Error getting users:', error);
+    console.error('获取用户列表失败:', error);
     res.status(500).json({ message: '服务器错误' });
   }
 });
@@ -737,17 +608,31 @@ app.get('/api/users', authenticateToken, async (req, res) => {
 // 获取当前用户信息
 app.get('/api/users/me', authenticateToken, async (req, res) => {
   try {
-    const usersData = JSON.parse(await fs.readFile(USERS_FILE, 'utf8'));
-    const user = usersData.users.find(u => u.id === req.user.id);
+    // 从数据库获取当前用户信息
+    const user = await userService.getUserById(req.user.id);
     
     if (!user) {
       return res.status(404).json({ message: '用户不存在' });
     }
 
+    // 获取用户的好友列表
+    const friends = await userService.getUserFriends(req.user.id);
+    
+    // 构建响应数据（不包含密码）
     const { password, ...userWithoutPassword } = user;
+    
+    // 添加好友ID列表到用户对象
+    userWithoutPassword.friends = friends.map(friend => friend.id);
+
+    // 字段映射，确保与前端期望的字段名一致
+    if (userWithoutPassword.avatar_url) {
+      userWithoutPassword.avatarUrl = userWithoutPassword.avatar_url;
+      delete userWithoutPassword.avatar_url;
+    }
+
     res.json(userWithoutPassword);
   } catch (error) {
-    console.error('Error getting current user:', error);
+    console.error('获取当前用户信息失败:', error);
     res.status(500).json({ message: '服务器错误' });
   }
 });
@@ -773,8 +658,21 @@ const PORT = process.env.PORT || 3000;
 
 async function startServer() {
   await initializeDataDirectory();
+  
+  // 检查用户表是否为空
+  const isEmpty = await isUsersTableEmpty();
+  if (isEmpty) {
+    console.log('\x1b[33m%s\x1b[0m', '警告: 用户表为空!');
+    console.log('\x1b[33m%s\x1b[0m', '请运行以下命令导入用户数据:');
+    console.log('\x1b[36m%s\x1b[0m', 'node scripts/import-users.js');
+    console.log('\x1b[33m%s\x1b[0m', '或者手动添加用户后再启动应用\n');
+  }
+  
   httpServer.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
+    if (isEmpty) {
+      console.log('\x1b[33m%s\x1b[0m', '警告: 应用已启动，但用户表为空，请导入用户数据');
+    }
   });
 }
 
@@ -782,97 +680,30 @@ startServer();
 
 // 辅助函数：生成聊天ID
 function getChatId(user1Id, user2Id) {
-  return [user1Id, user2Id].sort().join('_');
+  return messageService.getChatId(user1Id, user2Id);
 }
 
-// 辅助函数：保存消息到分片存储
+// 辅助函数：保存消息到数据库
 async function saveMessage(chatId, message) {
   try {
-    // 获取或创建索引文件
-    const indexFile = path.join(CHAT_LOGS_DIR, `${chatId}_index.json`);
-    let indexData;
+    // 准备消息对象
+    const messageToSave = {
+      id: message.id,
+      chatId: chatId,
+      sender: message.sender,
+      content: message.content,
+      type: message.type,
+      fileName: message.fileName,
+      fileSize: message.fileSize,
+      timestamp: message.timestamp
+    };
     
-    try {
-      const indexContent = await fs.readFile(indexFile, 'utf8');
-      indexData = JSON.parse(indexContent);
-    } catch (err) {
-      // 如果索引文件不存在，创建新的索引数据
-      indexData = {
-        totalMessages: 0,
-        totalShards: 0,
-        lastUpdated: new Date().toISOString(),
-        shards: []
-      };
-    }
-    
-    // 确定消息应该保存到哪个分片
-    const messageTimestamp = new Date(message.timestamp);
-    const messageMonth = `${messageTimestamp.getFullYear()}_${(messageTimestamp.getMonth() + 1).toString().padStart(2, '0')}`;
-    
-    // 查找或创建对应月份的分片
-    let currentShard = indexData.shards.find(shard => shard.id.startsWith(messageMonth));
-    if (!currentShard) {
-      // 创建新的月份分片
-      currentShard = {
-        id: `${messageMonth}_1`,
-        startTimestamp: messageTimestamp.toISOString(),
-        endTimestamp: messageTimestamp.toISOString(),
-        messageCount: 0,
-        size: 0
-      };
-      indexData.shards.push(currentShard);
-      indexData.totalShards++;
-    }
-    
-    // 获取分片数据
-    const shardFile = path.join(CHAT_LOGS_DIR, `${chatId}_${currentShard.id}.json`);
-    let shardData;
-    
-    try {
-      const shardContent = await fs.readFile(shardFile, 'utf8');
-      shardData = JSON.parse(shardContent);
-    } catch (err) {
-      shardData = { messages: [] };
-    }
-    
-    // 检查消息是否已存在
-    const messageExists = shardData.messages.some(m => m.id === message.id);
-    if (!messageExists) {
-      // 添加新消息
-      shardData.messages.push(message);
-      
-      // 按时间戳排序
-      shardData.messages.sort((a, b) => {
-        const timeA = new Date(a.timestamp).getTime();
-        const timeB = new Date(b.timestamp).getTime();
-        return timeA - timeB;
-      });
-      
-      // 更新分片信息
-      currentShard.messageCount = shardData.messages.length;
-      currentShard.endTimestamp = message.timestamp;
-      currentShard.size = Buffer.from(JSON.stringify(shardData)).length;
-      
-      // 更新总消息数
-      indexData.totalMessages++;
-      indexData.lastUpdated = new Date().toISOString();
-      
-      // 保存分片文件
-      await fs.writeFile(shardFile, JSON.stringify(shardData, null, 2));
-      
-      // 保存索引文件
-      await fs.writeFile(indexFile, JSON.stringify(indexData, null, 2));
-      
-      // 更新缓存
-      await chatCache.addMessage(chatId, currentShard.id, message);
-      
-      // 立即同步到磁盘
-      await chatCache.syncKeyToDisk(`${chatId}_${currentShard.id}`);
-    }
+    // 保存到数据库
+    await messageService.saveMessage(messageToSave);
     
     return true;
   } catch (error) {
-    console.error('Error saving message to shard:', error);
+    console.error('Error saving message to database:', error);
     return false;
   }
 }
@@ -880,83 +711,43 @@ async function saveMessage(chatId, message) {
 // 辅助函数：加载最近的消息
 async function loadRecentMessages(chatId, limit) {
   try {
-    // 获取索引文件
-    const indexFile = path.join(CHAT_LOGS_DIR, `${chatId}_index.json`);
+    // 从数据库加载最近消息
+    const messages = await messageService.getRecentMessages(chatId, limit);
     
-    // 读取索引文件
-    let indexData;
-    try {
-      const indexContent = await fs.readFile(indexFile, 'utf8');
-      indexData = JSON.parse(indexContent);
-    } catch (err) {
-      console.log(`索引文件不存在: ${indexFile}`);
-      return [];
-    }
-
-    if (!indexData || !indexData.shards || indexData.shards.length === 0) {
+    if (!messages || messages.length === 0) {
       console.log(`聊天 ${chatId} 没有消息记录`);
       return [];
     }
-
-    // 按时间戳排序分片
-    indexData.shards.sort((a, b) => {
-      const timeA = new Date(a.startTimestamp).getTime();
-      const timeB = new Date(b.startTimestamp).getTime();
-      return timeB - timeA; // 降序排序，最新的分片在前
-    });
-
-    // 从最新的分片开始加载消息
-    let allMessages = [];
-    let remainingLimit = limit;
-
-    for (const shard of indexData.shards) {
-      if (remainingLimit <= 0) break;
-
-      try {
-        const shardFile = path.join(CHAT_LOGS_DIR, `${chatId}_${shard.id}.json`);
-        let shardData;
-
-        // 首先尝试从缓存加载
-        const cachedData = await chatCache.get(chatId, shard.id);
-        if (cachedData && cachedData.messages) {
-          shardData = cachedData;
-        } else {
-          // 如果缓存中没有，从文件加载
-          const shardContent = await fs.readFile(shardFile, 'utf8');
-          shardData = JSON.parse(shardContent);
-          // 更新缓存
-          await chatCache.set(chatId, shard.id, shardData);
-        }
-
-        if (shardData.messages && Array.isArray(shardData.messages)) {
-          // 获取最新的消息
-          const sortedMessages = shardData.messages.sort((a, b) => {
-            const timeA = new Date(a.timestamp).getTime();
-            const timeB = new Date(b.timestamp).getTime();
-            return timeB - timeA; // 降序排序
-          });
-
-          allMessages = allMessages.concat(sortedMessages.slice(0, remainingLimit));
-          remainingLimit -= sortedMessages.length;
-        }
-      } catch (err) {
-        console.error(`读取分片 ${shard.id} 失败:`, err);
-        continue;
-      }
-    }
-
-    // 最终排序并限制数量
-    allMessages.sort((a, b) => {
-      const timeA = new Date(a.timestamp).getTime();
-      const timeB = new Date(b.timestamp).getTime();
-      return timeB - timeA; // 降序排序，最新的消息在前
-    });
-
-    const messages = allMessages.slice(0, limit);
+    
     console.log(`已加载聊天 ${chatId} 的 ${messages.length} 条消息`);
     
+    // 处理字段名转换（数据库字段和应用程序对象字段的映射）
+    const formattedMessages = [];
+    
+    for (const msg of messages) {
+      // 获取发送者信息，包括头像
+      const sender = await userService.getUserById(msg.sender_id);
+      
+      const formattedMsg = {
+        id: msg.id,
+        sender: msg.sender_id,
+        content: msg.content,
+        type: msg.message_type,
+        fileName: msg.file_name,
+        fileSize: msg.file_size,
+        timestamp: msg.timestamp
+      };
+      
+      // 添加发送者头像
+      if (sender && sender.avatar_url) {
+        formattedMsg.senderAvatar = sender.avatar_url;
+      }
+      
+      formattedMessages.push(formattedMsg);
+    }
+    
     // 反转消息顺序，使旧消息在前
-    return messages.reverse();
+    return formattedMessages.reverse();
   } catch (error) {
     console.error('加载最近消息失败:', error);
     return [];
@@ -966,271 +757,124 @@ async function loadRecentMessages(chatId, limit) {
 // 辅助函数：加载指定消息ID之前的消息
 async function loadMessagesBeforeId(chatId, beforeMessageId, limit) {
   try {
-    // 获取索引文件
-    const indexFile = path.join(CHAT_LOGS_DIR, `${chatId}_index.json`);
+    // 从数据库加载指定ID之前的消息
+    const messages = await messageService.getMessagesBefore(chatId, beforeMessageId, limit);
     
-    // 读取索引文件
-    let indexData;
-    try {
-      const indexContent = await fs.readFile(indexFile, 'utf8');
-      indexData = JSON.parse(indexContent);
-    } catch (err) {
-      console.log(`索引文件不存在: ${indexFile}`);
+    if (!messages || messages.length === 0) {
       return [];
     }
-
-    if (!indexData || !indexData.shards || indexData.shards.length === 0) {
-      console.log(`聊天 ${chatId} 没有消息记录`);
-      return [];
-    }
-
-    // 按时间戳排序分片
-    indexData.shards.sort((a, b) => {
-      const timeA = new Date(a.startTimestamp).getTime();
-      const timeB = new Date(b.startTimestamp).getTime();
-      return timeB - timeA; // 降序排序，最新的分片在前
-    });
-
-    // 查找目标消息并加载之前的消息
-    let allMessages = [];
-    let foundTargetMessage = false;
-    let targetMessageTime;
-
-    // 首先找到目标消息的时间戳
-    for (const shard of indexData.shards) {
-      try {
-        const shardFile = path.join(CHAT_LOGS_DIR, `${chatId}_${shard.id}.json`);
-        let shardData;
-
-        // 首先尝试从缓存加载
-        const cachedData = await chatCache.get(chatId, shard.id);
-        if (cachedData && cachedData.messages) {
-          shardData = cachedData;
-        } else {
-          // 如果缓存中没有，从文件加载
-          const shardContent = await fs.readFile(shardFile, 'utf8');
-          shardData = JSON.parse(shardContent);
-          // 更新缓存
-          await chatCache.set(chatId, shard.id, shardData);
-        }
-
-        const targetMessage = shardData.messages.find(msg => msg.id === beforeMessageId);
-        if (targetMessage) {
-          targetMessageTime = new Date(targetMessage.timestamp).getTime();
-          foundTargetMessage = true;
-          break;
-        }
-      } catch (err) {
-        console.error(`读取分片 ${shard.id} 失败:`, err);
-        continue;
+    
+    // 处理字段名转换
+    const formattedMessages = [];
+    
+    for (const msg of messages) {
+      // 获取发送者信息，包括头像
+      const sender = await userService.getUserById(msg.sender_id);
+      
+      const formattedMsg = {
+        id: msg.id,
+        sender: msg.sender_id,
+        content: msg.content,
+        type: msg.message_type,
+        fileName: msg.file_name,
+        fileSize: msg.file_size,
+        timestamp: msg.timestamp
+      };
+      
+      // 添加发送者头像
+      if (sender && sender.avatar_url) {
+        formattedMsg.senderAvatar = sender.avatar_url;
       }
+      
+      formattedMessages.push(formattedMsg);
     }
-
-    if (!foundTargetMessage) {
-      console.log(`未找到目标消息 ${beforeMessageId}`);
-      return [];
-    }
-
-    // 加载目标消息之前的消息
-    for (const shard of indexData.shards) {
-      try {
-        const shardFile = path.join(CHAT_LOGS_DIR, `${chatId}_${shard.id}.json`);
-        let shardData;
-
-        // 首先尝试从缓存加载
-        const cachedData = await chatCache.get(chatId, shard.id);
-        if (cachedData && cachedData.messages) {
-          shardData = cachedData;
-        } else {
-          // 如果缓存中没有，从文件加载
-          const shardContent = await fs.readFile(shardFile, 'utf8');
-          shardData = JSON.parse(shardContent);
-          // 更新缓存
-          await chatCache.set(chatId, shard.id, shardData);
-        }
-
-        // 筛选出目标消息之前的消息
-        const olderMessages = shardData.messages.filter(msg => {
-          const msgTime = new Date(msg.timestamp).getTime();
-          return msgTime < targetMessageTime;
-        });
-
-        allMessages = allMessages.concat(olderMessages);
-      } catch (err) {
-        console.error(`读取分片 ${shard.id} 失败:`, err);
-        continue;
-      }
-    }
-
-    // 按时间戳降序排序
-    allMessages.sort((a, b) => {
+    
+    // 按时间戳排序，从旧到新
+    formattedMessages.sort((a, b) => {
       const timeA = new Date(a.timestamp).getTime();
       const timeB = new Date(b.timestamp).getTime();
-      return timeB - timeA;
+      return timeA - timeB;
     });
-
-    // 获取指定数量的消息
-    const messages = allMessages.slice(0, limit);
-    console.log(`已加载聊天 ${chatId} 中消息 ${beforeMessageId} 之前的 ${messages.length} 条消息`);
     
-    // 反转消息顺序，使旧消息在前
-    return messages.reverse();
+    return formattedMessages;
   } catch (error) {
     console.error('加载历史消息失败:', error);
     return [];
   }
 }
 
-// 辅助函数：将现有聊天记录迁移到分片存储格式
-async function migrateChat(chatId) {
-  try {
-    // 读取原始聊天记录
-    const chatFile = path.join(CHAT_LOGS_DIR, `${chatId}.json`);
-    const chatData = await fs.readFile(chatFile, 'utf8')
-      .then(data => JSON.parse(data))
-      .catch(() => ({ messages: [] }));
-    
-    if (chatData.messages.length === 0) {
-      console.log(`聊天 ${chatId} 没有消息，跳过迁移`);
-      return;
-    }
-    
-    console.log(`迁移聊天记录 ${chatId}, 消息数: ${chatData.messages.length}`);
-    
-    // 创建索引文件
-    const indexFile = path.join(CHAT_LOGS_DIR, `${chatId}_index.json`);
-    const indexData = {
-      totalMessages: chatData.messages.length,
-      totalShards: Math.ceil(chatData.messages.length / 500),
-      lastUpdated: new Date().toISOString(),
-      shards: []
-    };
-    
-    // 分割消息到分片
-    const shardPromises = [];
-    for (let i = 0; i < indexData.totalShards; i++) {
-      const start = i * 500;
-      const end = Math.min((i + 1) * 500, chatData.messages.length);
-      const shardMessages = chatData.messages.slice(start, end);
-      
-      const shardId = i + 1;
-      const shardFile = path.join(CHAT_LOGS_DIR, `${chatId}_${shardId}.json`);
-      
-      // 添加分片信息到索引
-      indexData.shards.push({
-        id: shardId,
-        startMessageId: shardMessages[0].id,
-        endMessageId: shardMessages[shardMessages.length - 1].id,
-        messageCount: shardMessages.length,
-        timeRange: {
-          start: shardMessages[0].timestamp,
-          end: shardMessages[shardMessages.length - 1].timestamp
-        }
-      });
-      
-      // 保存分片文件
-      shardPromises.push(
-        fs.writeFile(shardFile, JSON.stringify({ messages: shardMessages }, null, 2))
-      );
-    }
-    
-    // 等待所有分片文件写入完成
-    await Promise.all(shardPromises);
-    
-    // 保存索引文件
-    await fs.writeFile(indexFile, JSON.stringify(indexData, null, 2));
-    
-    // 验证所有文件都已正确写入
-    try {
-      // 检查索引文件
-      await fs.access(indexFile);
-      
-      // 检查所有分片文件
-      for (let i = 1; i <= indexData.totalShards; i++) {
-        const shardFile = path.join(CHAT_LOGS_DIR, `${chatId}_${i}.json`);
-        await fs.access(shardFile);
-      }
-      
-      // 所有文件都存在，创建备份但保留原始文件
-      await fs.copyFile(chatFile, path.join(CHAT_LOGS_DIR, `${chatId}.json.bak`));
-      console.log(`聊天 ${chatId} 迁移完成，分成 ${indexData.totalShards} 个分片，原始文件已备份`);
-    } catch (error) {
-      console.error(`迁移验证失败，保留原始文件:`, error);
-      // 迁移验证失败，保留原始文件
-      throw new Error('迁移验证失败');
-    }
-  } catch (error) {
-    console.error(`迁移聊天记录 ${chatId} 失败:`, error);
-  }
-}
-
 // 更新用户状态
 async function updateUserStatus(userId, status) {
   try {
-    const usersData = JSON.parse(await fs.readFile(USERS_FILE, 'utf8'));
-    const user = usersData.users.find(u => u.id === userId);
-    if (user && user.status !== status) {
-      user.status = status;
-      user.lastStatusChange = getLocalISOString();
-      await fs.writeFile(USERS_FILE, JSON.stringify(usersData, null, 2));
-    }
+    // 使用数据库服务更新用户状态
+    const user = await userService.updateUserStatus(userId, status);
+    
+    return user;
   } catch (error) {
-    console.error('Error updating user status:', error);
+    console.error('更新用户状态失败:', error);
+    return null;
   }
 }
 
 // 修改广播用户状态函数，只向好友广播
 async function broadcastUserStatus(userId) {
   try {
-    const usersData = JSON.parse(await fs.readFile(USERS_FILE, 'utf8'));
-    const currentUser = usersData.users.find(u => u.id === userId);
+    // 获取用户的好友
+    const friends = await userService.getUserFriends(userId);
+    if (!friends || friends.length === 0) return;
     
-    if (!currentUser) return;
-    
-    // 获取该用户的所有好友
-    const friends = usersData.users.filter(user => 
-      currentUser.friends.includes(user.id)
-    );
+    // 获取用户信息
+    const user = await userService.getUserById(userId);
+    if (!user) return;
     
     // 向每个好友发送状态更新
-    friends.forEach(friend => {
+    for (const friend of friends) {
       const friendSocket = onlineUsers.get(friend.id);
       if (friendSocket) {
-        const friendsList = usersData.users
-          .filter(u => friend.friends.includes(u.id))
-          .map(({ password, ...user }) => ({
-            ...user,
-            status: userSessions.has(user.id) ? 'online' : 'offline'
-          }));
-        friendSocket.emit('users status update', friendsList);
+        // 获取这个好友的好友列表
+        const friendsList = await userService.getUserFriends(friend.id);
+        
+        // 处理好友列表，添加在线状态信息并移除密码
+        const processedFriendsList = friendsList.map(f => {
+          const friendData = {
+            ...f,
+            status: userSessions.has(f.id) ? 'online' : f.status || 'offline',
+            password: undefined
+          };
+          
+          // 字段映射，确保与前端期望的字段名一致
+          if (friendData.avatar_url) {
+            friendData.avatarUrl = friendData.avatar_url;
+            delete friendData.avatar_url;
+          }
+          
+          return friendData;
+        });
+        
+        // 发送更新后的好友列表
+        friendSocket.emit('users status update', processedFriendsList);
       }
-    });
+    }
   } catch (error) {
-    console.error('Error broadcasting user status:', error);
+    console.error('广播用户状态时出错:', error);
   }
 }
 
 // 验证好友关系的中间件
 function verifyFriendship(req, res, next) {
-  const targetUserId = req.body.targetUserId || req.params.targetUserId;
+  const userId = req.user.id;
+  const friendId = req.params.userId;
   
-  fs.readFile(USERS_FILE, 'utf8')
-    .then(data => {
-      const usersData = JSON.parse(data);
-      const currentUser = usersData.users.find(u => u.id === req.user.id);
-      
-      if (!currentUser) {
-        return res.status(404).json({ message: '用户不存在' });
+  userService.checkFriendship(userId, friendId)
+    .then(isFriend => {
+      if (isFriend) {
+        next();
+      } else {
+        res.status(403).json({ message: '您没有权限与该用户聊天' });
       }
-      
-      if (!currentUser.friends.includes(targetUserId)) {
-        return res.status(403).json({ message: '只能与好友聊天' });
-      }
-      
-      next();
     })
     .catch(error => {
-      console.error('Error verifying friendship:', error);
+      console.error('验证好友关系时出错:', error);
       res.status(500).json({ message: '服务器错误' });
     });
 }
@@ -1240,8 +884,8 @@ app.post('/api/auth/login', async (req, res) => {
   const { username, password } = req.body;
 
   try {
-    const usersData = JSON.parse(await fs.readFile(USERS_FILE, 'utf8'));
-    const user = usersData.users.find(u => u.username === username);
+    // 从数据库获取用户
+    const user = await userService.getUserByUsername(username);
 
     if (!user) {
       return res.status(401).json({ message: '用户名或密码错误' });
@@ -1261,8 +905,8 @@ app.post('/api/auth/login', async (req, res) => {
       
       // 可选：将明文密码转换为bcrypt加密（建议启用）
       // if (isValidPassword) {
-      //   user.password = await bcrypt.hash(password, 10);
-      //   await fs.writeFile(USERS_FILE, JSON.stringify(usersData, null, 2));
+      //   const hashedPassword = await bcrypt.hash(password, 10);
+      //   await userService.updateUserPassword(user.id, hashedPassword);
       // }
     }
 
@@ -1271,9 +915,8 @@ app.post('/api/auth/login', async (req, res) => {
     }
 
     // 更新登录时间和状态
-    user.lastLoginAt = getLocalISOString();
-    user.status = 'online';
-    await fs.writeFile(USERS_FILE, JSON.stringify(usersData, null, 2));
+    await userService.updateLastLogin(user.id);
+    await userService.updateUserStatus(user.id, 'online');
 
     // 生成 JWT token
     const token = jwt.sign({ 
@@ -1282,8 +925,18 @@ app.post('/api/auth/login', async (req, res) => {
       role: user.role 
     }, JWT_SECRET, { expiresIn: '24h' });
 
+    // 获取最新的用户信息
+    const updatedUser = await userService.getUserById(user.id);
+
     // 移除密码后发送用户信息
-    const { password: _, ...userWithoutPassword } = user;
+    const { password: _, ...userWithoutPassword } = updatedUser;
+    
+    // 字段映射，确保与前端期望的字段名一致
+    if (userWithoutPassword.avatar_url) {
+      userWithoutPassword.avatarUrl = userWithoutPassword.avatar_url;
+      delete userWithoutPassword.avatar_url;
+    }
+    
     res.json({ token, user: userWithoutPassword });
   } catch (error) {
     console.error('Login error:', error);

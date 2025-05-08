@@ -355,4 +355,76 @@ docker run -d \
 4. 安全建议：
    - 生产环境建议使用 HTTPS
    - 可以配置反向代理（如 Nginx）
-   - 定期更新基础镜像和依赖 
+   - 定期更新基础镜像和依赖
+
+## 聊天系统部署说明
+
+### 前提条件
+
+- Docker 和 Docker Compose
+- Node.js 20.x (如需本地开发)
+
+### 快速部署
+
+1. 克隆仓库：
+   ```bash
+   git clone https://github.com/yourusername/novascript.git
+   cd novascript
+   ```
+
+2. 创建必要的目录：
+   ```bash
+   mkdir -p data/db public/uploads
+   ```
+
+3. 确保用户数据文件存在：
+   ```bash
+   cp data/users.json.example data/users.json
+   ```
+   
+   根据需要编辑`data/users.json`文件，添加或修改初始用户。
+
+4. 启动应用：
+   ```bash
+   docker-compose up -d
+   ```
+
+5. 导入用户数据：
+   
+   如果应用启动时显示"用户表为空"的警告，需要运行以下命令导入用户数据：
+   ```bash
+   docker exec -it novascript node scripts/import-users.js
+   ```
+
+6. 访问应用：
+   默认情况下，应用将在 http://localhost:8002 上运行。
+
+## 用户数据导入说明
+
+系统在启动时会检查数据库的用户表是否为空：
+
+- 如果用户表不为空，应用将直接启动并正常运行
+- 如果用户表为空，应用会启动但会显示警告，提示需要导入用户数据
+
+导入用户数据的方法：
+
+1. 确保`data/users.json`文件包含正确的用户信息
+2. 执行导入命令：`docker exec -it novascript node scripts/import-users.js`
+
+或者，您也可以通过注册页面创建新用户。
+
+## 技术栈
+
+- Node.js + Express.js
+- Socket.IO 实时通信
+- SQLite 数据库
+- Docker 容器化部署
+
+## 功能特性
+
+- 实时私聊
+- 支持文本、图片、视频等多媒体消息
+- Markdown和公式渲染
+- 用户状态同步
+- 文件上传和分享
+- 移动端友好的自适应界面 

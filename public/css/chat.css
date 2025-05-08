@@ -568,11 +568,12 @@ body {
   border-top: 1px solid var(--border-color);
   z-index: 100;
   box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.05);
-  height: 120px; /* 固定输入区域高度 */
+  min-height: 80px; /* 改为最小高度而不是固定高度 */
 }
 
 .message-form {
   position: relative;
+  width: 100%; /* 使用百分比宽度 */
   max-width: 1920px; /* 限制最大宽度 */
   margin: 0 auto; /* 水平居中 */
 }
@@ -580,8 +581,8 @@ body {
 .input-wrapper {
   position: relative;
   display: flex;
-  flex-direction: column;
-  gap: 10px; /* 增加间距 */
+  flex-direction: column; /* 改回垂直排列 */
+  width: 100%; /* 确保占满容器宽度 */
 }
 
 .toolbar {
@@ -591,6 +592,7 @@ body {
   z-index: 2;
   transform: none;
   padding-left: 0; /* 移除左侧内边距 */
+  margin-bottom: 8px; /* 与输入框间距 */
 }
 
 .toolbar-btn {
@@ -611,9 +613,10 @@ body {
 }
 
 .message-input {
-  flex: 1;
-  min-height: 80px;
-  padding: 10px 100px 10px 20px;
+  width: 100%; /* 确保宽度100% */
+  min-height: 60px;
+  height: 80px;
+  padding: 10px 100px 10px 15px; /* 右侧留出按钮空间 */
   border: 1px solid var(--border-color);
   border-radius: 20px;
   background-color: var(--input-bg);
@@ -630,7 +633,7 @@ body {
 }
 
 .send-btn {
-  position: absolute;
+  position: absolute; /* 恢复绝对定位 */
   right: 5px;
   top: 50%;
   transform: translateY(-50%);
@@ -642,6 +645,7 @@ body {
   cursor: pointer;
   font-size: 14px;
   transition: background-color 0.2s;
+  min-width: 80px; /* 设置最小宽度 */
 }
 
 .send-btn:hover {
@@ -661,7 +665,8 @@ body {
   
   .input-area {
     left: 0;
-    height: 100px;
+    min-height: 70px; /* 减小移动端最小高度 */
+    padding: 10px 15px;
   }
   
   .chat-area {
@@ -700,6 +705,19 @@ body {
     height: 48px;
     border-radius: 24px;
   }
+
+  .message-input {
+    min-height: 36px;
+    height: 36px;
+    padding: 8px 80px 8px 12px; /* 调整内边距 */
+  }
+
+  .send-btn {
+    padding: 6px 15px;
+    font-size: 13px;
+    min-width: 70px;
+    right: 5px;
+  }
 }
 
 @media (max-width: 480px) {
@@ -720,6 +738,24 @@ body {
 
   .message-audio {
     max-width: 200px;
+  }
+
+  .input-area {
+    padding: 8px 10px;
+  }
+  
+  .input-wrapper {
+    gap: 6px;
+  }
+  
+  .message-input {
+    padding: 8px 70px 8px 10px; /* 调整内边距 */
+  }
+  
+  .send-btn {
+    padding: 5px 12px;
+    min-width: 60px;
+    font-size: 12px;
   }
 }
 
@@ -1431,173 +1467,447 @@ body {
     color: #eee;
 }
 
-/* Lightbox 样式 */
-.lightbox {
-    display: none;
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(0, 0, 0, 0.9);
-    z-index: 2000;
-    cursor: pointer;
-}
-
-.lightbox.active {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    flex-direction: column;
-}
-
-.lightbox-content {
-    position: relative;
-    max-width: 90%;
-    max-height: 90vh;
-    margin: auto;
-}
-
-.lightbox-image {
-    max-width: 100%;
-    max-height: 90vh;
-    object-fit: contain;
-    border-radius: 4px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-}
-
-.lightbox-nav {
-    position: absolute;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 100%;
-    display: flex;
-    justify-content: space-between;
-    padding: 0 20px;
-    box-sizing: border-box;
-}
-
-.lightbox-nav button {
-    background: rgba(255, 255, 255, 0.1);
-    border: none;
-    color: white;
-    padding: 15px 20px;
-    cursor: pointer;
-    border-radius: 4px;
-    font-size: 18px;
-    transition: background-color 0.3s;
-}
-
-.lightbox-nav button:hover {
-    background: rgba(255, 255, 255, 0.2);
-}
-
-.lightbox-close {
-    position: absolute;
-    top: 20px;
-    right: 20px;
-    background: rgba(255, 255, 255, 0.1);
-    border: none;
-    color: white;
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 24px;
-    transition: background-color 0.3s;
-}
-
-.lightbox-close:hover {
-    background: rgba(255, 255, 255, 0.2);
-}
-
-.lightbox-counter {
-    position: absolute;
-    bottom: 20px;
-    left: 50%;
-    transform: translateX(-50%);
-    color: white;
-    background: rgba(0, 0, 0, 0.5);
-    padding: 5px 10px;
-    border-radius: 15px;
-    font-size: 14px;
-}
-
-/* 移动端适配 */
-@media (max-width: 768px) {
-    .lightbox-nav button {
-        padding: 10px 15px;
-        font-size: 16px;
-    }
-
-    .lightbox-close {
-        top: 10px;
-        right: 10px;
-        width: 35px;
-        height: 35px;
-        font-size: 20px;
-    }
-} 
-
-/* 加载更多消息按钮样式 */
-.load-more-container {
-  width: 100%;
+/* 加载更多按钮样式 */
+.load-more-wrapper {
   display: flex;
   justify-content: center;
-  padding: 8px 0;
-  margin-bottom: 10px;
+  margin: 10px 0;
+  padding: 5px;
 }
 
 .load-more-btn {
-  background-color: #f2f2f2;
-  color: #666;
+  background-color: #0069d9; /* 使用更深的蓝色增强对比度 */
+  color: white;
   border: none;
-  border-radius: 12px;
-  padding: 6px 12px;
-  font-size: 13px;
+  border-radius: 15px;
+  padding: 8px 16px;
   cursor: pointer;
+  font-size: 14px;
+  font-weight: 600; /* 加粗文字 */
+  transition: background-color 0.2s ease;
   display: flex;
   align-items: center;
-  gap: 5px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  transition: all 0.2s ease;
+  justify-content: center;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); /* 添加微妙的阴影增强可见性 */
 }
 
 .load-more-btn:hover {
-  background-color: #e6e6e6;
-  color: #333;
+  background-color: #0056b3; /* 悬停时的更深色 */
 }
 
-.load-more-btn i {
-  font-size: 12px;
-}
-
-/* 暗色主题下的加载更多按钮 */
+/* 暗色主题保持原样 */
 [data-theme="dark"] .load-more-btn {
-  background-color: #333333;
-  color: #aaaaaa;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  background-color: var(--accent-light);
+  box-shadow: none;
 }
 
 [data-theme="dark"] .load-more-btn:hover {
-  background-color: #444444;
-  color: #dddddd;
+  background-color: var(--accent-dark);
+}
+
+.loading-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  border-top-color: white;
+  animation: spin 0.8s linear infinite;
+  margin-right: 8px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Lightbox 样式 */
+.lightbox {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.9);
+  display: none;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+}
+
+.lightbox.active {
+  display: flex;
+}
+
+.lightbox-content {
+  position: relative;
+  max-width: 90%;
+  max-height: 90%;
+  margin: auto;
+}
+
+.lightbox-image {
+  max-width: 100%;
+  max-height: 90vh;
+  object-fit: contain;
+  display: block;
+  margin: 0 auto;
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.5);
+}
+
+.lightbox-nav {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: space-between;
+  transform: translateY(-50%);
+  padding: 0 20px;
+}
+
+.lightbox-nav button {
+  background-color: rgba(0, 0, 0, 0.5);
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  font-size: 20px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.lightbox-nav button:hover {
+  background-color: rgba(0, 0, 0, 0.8);
+}
+
+.lightbox-close {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  background-color: rgba(0, 0, 0, 0.5);
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  font-size: 24px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s ease;
+}
+
+.lightbox-close:hover {
+  background-color: rgba(0, 0, 0, 0.8);
+}
+
+.lightbox-counter {
+  position: absolute;
+  bottom: -30px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  color: white;
+  font-size: 14px;
+}
+
+/* 消息图片样式增强 */
+.message-image {
+  max-width: 100%;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+
+.message-image:hover {
+  transform: scale(1.03);
 }
 
 /* 移动端适配 */
 @media (max-width: 768px) {
+  .lightbox-nav button {
+    width: 36px;
+    height: 36px;
+    font-size: 18px;
+  }
+  
+  .lightbox-close {
+    width: 36px;
+    height: 36px;
+    font-size: 20px;
+    top: 10px;
+    right: 10px;
+  }
+  
   .load-more-btn {
-    font-size: 12px;
-    padding: 5px 10px;
+    padding: 6px 12px;
+    font-size: 13px;
   }
 }
 
-/* 小屏幕适配 */
 @media (max-width: 480px) {
-  .load-more-container {
-    padding: 5px 0;
+  .lightbox-nav button {
+    width: 32px;
+    height: 32px;
+    font-size: 16px;
   }
+  
+  .lightbox-close {
+    width: 32px;
+    height: 32px;
+    font-size: 18px;
+    top: 5px;
+    right: 5px;
+  }
+  
+  .load-more-btn {
+    padding: 5px 10px;
+    font-size: 12px;
+  }
+}
+
+/* 欢迎页面样式 */
+.welcome-page {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  height: 100%;
+  min-height: 400px;
+}
+
+.welcome-content {
+  max-width: 600px;
+  padding: 30px;
+  background-color: var(--bg-secondary);
+  border-radius: 10px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  text-align: center;
+  color: var(--text-primary);
+}
+
+.welcome-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.welcome-logo {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  margin-bottom: 15px;
+  object-fit: cover;
+  border: 4px solid var(--send-btn-bg);
+}
+
+.welcome-header h1 {
+  font-size: 24px;
+  margin: 15px 0;
+}
+
+.welcome-message {
+  text-align: left;
+}
+
+.welcome-message p {
+  margin: 15px 0;
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+.welcome-message ul {
+  padding-left: 20px;
+  margin: 15px 0;
+}
+
+.welcome-message li {
+  margin: 10px 0;
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+.welcome-tip {
+  display: flex;
+  align-items: center;
+  background-color: rgba(149, 236, 105, 0.1);
+  padding: 15px;
+  border-radius: 8px;
+  margin-top: 20px;
+  border-left: 4px solid var(--send-btn-bg);
+}
+
+.welcome-tip i {
+  font-size: 24px;
+  color: var(--send-btn-bg);
+  margin-right: 15px;
+}
+
+.welcome-tip p {
+  margin: 0;
+  font-weight: 500;
+}
+
+/* 暗色主题欢迎页面样式调整 */
+[data-theme="dark"] .welcome-tip {
+  background-color: rgba(45, 156, 60, 0.1);
+}
+
+[data-theme="dark"] .welcome-tip i {
+  color: var(--send-btn-bg);
+}
+
+[data-theme="dark"] .welcome-logo {
+  border-color: var(--send-btn-bg);
+}
+
+/* 媒体查询适配 */
+@media (max-width: 768px) {
+  .welcome-content {
+    width: 90%;
+    padding: 20px;
+  }
+  
+  .welcome-header h1 {
+    font-size: 20px;
+  }
+  
+  .welcome-logo {
+    width: 60px;
+    height: 60px;
+  }
+  
+  .welcome-message p,
+  .welcome-message li,
+  .welcome-tip p {
+    font-size: 14px;
+  }
+}
+
+@media (max-width: 480px) {
+  .welcome-content {
+    width: 95%;
+    padding: 15px;
+  }
+  
+  .welcome-header h1 {
+    font-size: 18px;
+  }
+  
+  .welcome-logo {
+    width: 50px;
+    height: 50px;
+  }
+  
+  .welcome-tip {
+    padding: 10px;
+  }
+  
+  .welcome-tip i {
+    font-size: 18px;
+  }
+}
+
+/* 图表帮助模态框样式 */
+.diagram-help-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.7);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+}
+
+.diagram-help-modal .modal-content {
+  background-color: var(--bg-secondary);
+  border-radius: 10px;
+  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.3);
+  max-width: 80%;
+  max-height: 80vh;
+  width: 800px;
+  overflow-y: auto;
+  padding: 20px;
+  position: relative;
+}
+
+.diagram-help-modal .close {
+  position: absolute;
+  top: 15px;
+  right: 15px;
+  font-size: 24px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  z-index: 10;
+}
+
+.diagram-help-modal .help-content {
+  padding: 10px 0;
+}
+
+.diagram-help-modal h2 {
+  margin-bottom: 15px;
+  color: var(--text-primary);
+  border-bottom: 2px solid #ff4444;
+  padding-bottom: 10px;
+}
+
+.diagram-help-modal pre {
+  background-color: var(--bg-primary);
+  border-radius: 5px;
+  padding: 10px;
+  overflow-x: auto;
+  margin: 10px 0;
+}
+
+/* 移动端适配 */
+@media (max-width: 768px) {
+  .diagram-help-modal .modal-content {
+    max-width: 90%;
+    width: auto;
+    padding: 15px;
+  }
+  
+  .diagram-help-modal pre {
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .diagram-help-modal .modal-content {
+    max-width: 95%;
+    padding: 10px;
+  }
+}
+
+/* 图表帮助模态框暗色主题样式 */
+[data-theme="dark"] .diagram-help-modal .modal-content {
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+}
+
+[data-theme="dark"] .diagram-help-modal pre {
+  background-color: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--border-color);
+}
+
+[data-theme="dark"] .diagram-help-modal .close {
+  color: var(--text-primary);
+}
+
+[data-theme="dark"] .diagram-help-modal a {
+  color: #58a6ff;
+}
+
+[data-theme="dark"] .diagram-help-modal h3,
+[data-theme="dark"] .diagram-help-modal h4 {
+  color: var(--text-primary);
 } 
