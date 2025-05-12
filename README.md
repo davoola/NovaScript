@@ -168,12 +168,12 @@ EOF
 > 做完以上几步，目录结构为:
 
 NovaScript/
-├── docker-compose.yml
+├── docker-compose.yml              # Docker Compose 配置文件
 └── data/
-    ├── users.json
+    ├── users.json                  # 用户数据 JSON 文件
     ├── db/
-    │   └── chatapp.sqlite
-    └── uploads/
+    │   └── chatapp.sqlite          # SQLite 数据库文件
+    └── uploads/                    # 上传的文件存储目录
  
 
 4. 启动容器：
