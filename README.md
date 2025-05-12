@@ -166,7 +166,7 @@ EOF
 3. 创建用户数据文件：编辑 `data/users.json` 添加用户数据，参考 `users.json.example` 的格式
 
 > 做完以上几步，目录结构为:
-
+```
 NovaScript/
 ├── docker-compose.yml              # Docker Compose 配置文件
 └── data/
@@ -174,8 +174,8 @@ NovaScript/
     ├── db/
     │   └── chatapp.sqlite          # SQLite 数据库文件
     └── uploads/                    # 上传的文件存储目录
- 
 
+```
 4. 启动容器：
 ```bash
 docker-compose up -d
