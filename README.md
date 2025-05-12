@@ -18,18 +18,19 @@
   - 支持图片幻灯片播放
   - 支持键盘快捷键操作
   - 支持触摸屏手势操作
+- 文件上传和分享
+- 移动端友好的自适应界面
 
 ## 技术栈
 
 - **后端**
-  - Node.js
-  - Express.js
-  - Socket.IO
+  - Node.js + Express.js
+  - Socket.IO 实时通信
+  - SQLite 数据库
   - bcryptjs
 
 - **前端**
-  - HTML5
-  - CSS3
+  - HTML5 + CSS3
   - JavaScript
   - Socket.IO Client
   - Marked.js (Markdown 解析)
@@ -38,7 +39,13 @@
   - Mermaid (图表)
   - Emoji Toolkit
 
-## 安装步骤
+## 部署指南
+
+### 前提条件
+
+- Git
+- Node.js 20.x (如需本地开发)
+- Docker 和 Docker Compose (如使用容器部署)
 
 ### 方式一：直接部署
 
@@ -53,10 +60,10 @@ cd NovaScript
 npm install
 ```
 
-3. 初始化用户配置：
+3. 初始化必要的目录和配置：
 ```bash
 # 创建必要的目录
-mkdir -p data/chats public/uploads
+mkdir -p data/db public/uploads
 
 # 从示例文件创建用户配置
 cp data/users.json.example data/users.json
@@ -77,33 +84,32 @@ npm start
 
 ### 方式二：Docker 部署
 
-1. 使用 Docker Compose 部署（推荐）：
+#### A. 使用 Docker Compose 部署（推荐）
+
 ```bash
 # 克隆仓库
 git clone https://github.com/davoola/NovaScript.git
 cd NovaScript
 
 # 创建必要的目录
-mkdir -p data/chats public/uploads
+mkdir -p data/db public/uploads
 
 # 初始化用户配置
 cp data/users.json.example data/users.json
-
-# 创建并编辑环境变量文件（可选）
-cp .env.example .env
 
 # 构建并启动容器
 docker-compose up -d
 ```
 
-2. 使用 Docker 直接部署：
+#### B. 使用 Docker 直接部署
+
 ```bash
 # 克隆仓库
 git clone https://github.com/davoola/NovaScript.git
 cd NovaScript
 
 # 创建必要的目录
-mkdir -p data/chats public/uploads
+mkdir -p data/db public/uploads
 
 # 初始化用户配置
 cp data/users.json.example data/users.json
@@ -115,7 +121,7 @@ docker build -t novascript .
 docker run -d \
   -p 3000:3000 \
   -v $(pwd)/data/users.json:/app/data/users.json \
-  -v $(pwd)/data/chats:/app/data/chats \
+  -v $(pwd)/data/db:/app/data/db \
   -v $(pwd)/public/uploads:/app/public/uploads \
   --name novascript \
   novascript
@@ -123,39 +129,98 @@ docker run -d \
 
 访问 http://localhost:3000 即可使用应用。
 
+### 方式三：使用已发布的 Docker 镜像部署
+
+1. 创建项目目录结构：
+
+```bash
+mkdir -p NovaScript/data/db
+mkdir -p NovaScript/public/uploads
+touch NovaScript/data/users.json
+cd NovaScript
+```
+
+2. 创建 `docker-compose.yml` 文件：
+
+```bash
+cat > docker-compose.yml << 'EOF'
+version: '3.9'
+
+services:
+  novascript:
+    container_name: novascript
+    image: davoola/novascript:latest
+    ports:
+      - "8002:3000"
+    environment:
+      - NODE_ENV=production
+      - TZ=Asia/Shanghai
+    volumes:
+      - ./data/users.json:/app/data/users.json
+      - ./data/db:/app/data/db
+      - ./public/uploads:/app/public/uploads
+    restart: unless-stopped
+EOF
+```
+
+3. 创建用户数据文件：编辑 `data/users.json` 添加用户数据，参考 `users.json.example` 的格式
+
+4. 启动容器：
+```bash
+docker-compose up -d
+```
+
+系统将自动执行以下操作：
+- 检查 users.json 文件
+- 导入用户数据到 SQLite 数据库
+- 启动应用服务
+
 ### Docker 部署注意事项
 
-1. 数据持久化：
+1. **数据持久化**：
    - 用户配置存储在 `data/users.json` 中
-   - 聊天记录存储在 `data/chats` 目录中
+   - 数据库文件存储在 `data/db` 目录中
    - 上传的文件存储在 `public/uploads` 目录中
-   - Docker 部署时会自动挂载这些目录
    - 请定期备份这些目录的内容
 
-2. 环境变量：
+2. **环境变量**：
    - 可以通过 `.env` 文件或在 docker-compose.yml 中配置环境变量
    - 生产环境建议使用 Docker secrets 或环境变量管理工具
 
-3. 性能优化：
+3. **性能与安全**：
    - 容器默认使用 Node.js 生产模式运行
-   - 如需调整内存限制，可在 docker-compose.yml 中添加配置
-
-4. 安全建议：
    - 生产环境建议使用 HTTPS
    - 可以配置反向代理（如 Nginx）
    - 定期更新基础镜像和依赖
 
+### 构建和发布自己的 Docker 镜像
+
+如需构建和发布自己的 Docker 镜像，可执行以下命令：
+
+```bash
+docker build -t novascript .
+docker tag novascript YOUR_USERNAME/novascript:latest 
+docker push YOUR_USERNAME/novascript:latest
+```
+
+## 用户数据导入说明
+
+系统在启动时会检查数据库的用户表是否为空：
+
+- 如果用户表不为空，应用将直接启动
+- 如果用户表为空，系统会自动从 `data/users.json` 导入用户数据
+
+手动导入用户数据：
+
+```bash
+docker exec -it novascript node scripts/import-users.js
+```
+
 ## 使用说明
 
-1. 访问 http://localhost:3000 进入登录页面
+1. 访问应用（默认 http://localhost:3000 或 http://localhost:8002）
 2. 使用用户名和密码登录
 3. 进入聊天界面后即可开始聊天
-4. 支持以下特殊格式：
-   - Markdown 语法
-   - 代码块（支持语法高亮）
-   - LaTeX 数学公式
-   - Mermaid 图表
-   - 表情符号
 
 ### Markdown 语法
 
@@ -248,11 +313,6 @@ gantt
 npm run dev
 ```
 
-## 安全说明
-
-- 密码在传输和存储时进行加密处理
-- WebSocket连接也需要认证令牌
-
 ## 目录结构
 
 ```
@@ -264,6 +324,9 @@ npm run dev
 │   ├── index.html     # 主页面
 │   └── login.html     # 登录页面
 ├── data/              # 数据存储
+│   ├── db/            # 数据库文件
+│   └── users.json     # 用户配置
+├── scripts/           # 脚本文件
 ├── server.js          # 服务器入口文件
 ├── package.json       # 项目配置
 └── README.md          # 项目文档
@@ -280,151 +343,3 @@ npm run dev
 ## 许可证
 
 MIT License 
-
-## 部署方式
-
-### 方式一：直接部署
-
-// ... existing code ...
-
-### 方式二：Docker 部署
-
-1. 使用 Docker Compose 部署（推荐）：
-```bash
-# 克隆仓库
-git clone https://github.com/davoola/NovaScript.git
-cd NovaScript
-
-# 创建必要的目录
-mkdir -p data/chats public/uploads
-
-# 初始化用户配置
-cp data/users.json.example data/users.json
-
-# 创建并编辑环境变量文件（可选）
-cp .env.example .env
-
-# 构建并启动容器
-docker-compose up -d
-```
-
-2. 使用 Docker 直接部署：
-```bash
-# 克隆仓库
-git clone https://github.com/davoola/NovaScript.git
-cd NovaScript
-
-# 创建必要的目录
-mkdir -p data/chats public/uploads
-
-# 初始化用户配置
-cp data/users.json.example data/users.json
-
-# 构建镜像
-docker build -t novascript .
-
-# 运行容器
-docker run -d \
-  -p 3000:3000 \
-  -v $(pwd)/data/users.json:/app/data/users.json \
-  -v $(pwd)/data/chats:/app/data/chats \
-  -v $(pwd)/public/uploads:/app/public/uploads \
-  --name novascript \
-  novascript
-```
-
-访问 http://localhost:3000 即可使用应用。
-
-### Docker 部署注意事项
-
-1. 数据持久化：
-   - 用户配置存储在 `data/users.json` 中
-   - 聊天记录存储在 `data/chats` 目录中
-   - 上传的文件存储在 `public/uploads` 目录中
-   - Docker 部署时会自动挂载这些目录
-   - 请定期备份这些目录的内容
-
-2. 环境变量：
-   - 可以通过 `.env` 文件或在 docker-compose.yml 中配置环境变量
-   - 生产环境建议使用 Docker secrets 或环境变量管理工具
-
-3. 性能优化：
-   - 容器默认使用 Node.js 生产模式运行
-   - 如需调整内存限制，可在 docker-compose.yml 中添加配置
-
-4. 安全建议：
-   - 生产环境建议使用 HTTPS
-   - 可以配置反向代理（如 Nginx）
-   - 定期更新基础镜像和依赖
-
-## 聊天系统部署说明
-
-### 前提条件
-
-- Docker 和 Docker Compose
-- Node.js 20.x (如需本地开发)
-
-### 快速部署
-
-1. 克隆仓库：
-   ```bash
-   git clone https://github.com/yourusername/novascript.git
-   cd novascript
-   ```
-
-2. 创建必要的目录：
-   ```bash
-   mkdir -p data/db public/uploads
-   ```
-
-3. 确保用户数据文件存在：
-   ```bash
-   cp data/users.json.example data/users.json
-   ```
-   
-   根据需要编辑`data/users.json`文件，添加或修改初始用户。
-
-4. 启动应用：
-   ```bash
-   docker-compose up -d
-   ```
-
-5. 导入用户数据：
-   
-   如果应用启动时显示"用户表为空"的警告，需要运行以下命令导入用户数据：
-   ```bash
-   docker exec -it novascript node scripts/import-users.js
-   ```
-
-6. 访问应用：
-   默认情况下，应用将在 http://localhost:8002 上运行。
-
-## 用户数据导入说明
-
-系统在启动时会检查数据库的用户表是否为空：
-
-- 如果用户表不为空，应用将直接启动并正常运行
-- 如果用户表为空，应用会启动但会显示警告，提示需要导入用户数据
-
-导入用户数据的方法：
-
-1. 确保`data/users.json`文件包含正确的用户信息
-2. 执行导入命令：`docker exec -it novascript node scripts/import-users.js`
-
-或者，您也可以通过注册页面创建新用户。
-
-## 技术栈
-
-- Node.js + Express.js
-- Socket.IO 实时通信
-- SQLite 数据库
-- Docker 容器化部署
-
-## 功能特性
-
-- 实时私聊
-- 支持文本、图片、视频等多媒体消息
-- Markdown和公式渲染
-- 用户状态同步
-- 文件上传和分享
-- 移动端友好的自适应界面 
