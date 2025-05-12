@@ -6,13 +6,13 @@ services:
     build: .
     image: davoola/novascript
     ports:
-      - "8002:3000"
+      - "8080:3000"
     environment:
       - NODE_ENV=production
       - TZ=Asia/Shanghai
     volumes:
       - ./data/users.json:/app/data/users.json
       - ./data/db:/app/data/db
-      - ./public/uploads:/app/public/uploads
+      - ./data/uploads:/app/public/uploads
     restart: unless-stopped
     
