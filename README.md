@@ -135,8 +135,10 @@ docker run -d \
 
 ```bash
 mkdir -p NovaScript/data/db
-mkdir -p NovaScript/public/uploads
+mkdir -p NovaScript/data/uploads
 touch NovaScript/data/users.json
+cp NovaScript/data/db/chatapp.sqlite
+
 cd NovaScript
 ```
 
@@ -144,8 +146,6 @@ cd NovaScript
 
 ```bash
 cat > docker-compose.yml << 'EOF'
-version: '3.9'
-
 services:
   novascript:
     container_name: novascript
@@ -158,12 +158,23 @@ services:
     volumes:
       - ./data/users.json:/app/data/users.json
       - ./data/db:/app/data/db
-      - ./public/uploads:/app/public/uploads
+      - ./data/uploads:/app/public/uploads
     restart: unless-stopped
 EOF
 ```
 
 3. 创建用户数据文件：编辑 `data/users.json` 添加用户数据，参考 `users.json.example` 的格式
+
+> 做完以上几步，目录结构为:
+
+NovaScript/
+├── docker-compose.yml
+└── data/
+    ├── users.json
+    ├── db/
+    │   └── chatapp.sqlite
+    └── uploads/
+ 
 
 4. 启动容器：
 ```bash
